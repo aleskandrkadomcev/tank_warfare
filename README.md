@@ -10,14 +10,9 @@
              █  HTML5 · Canvas · WebSocket  │  Vite  │  Node + ws  │  TypeScript (shared / server / client)  █
               ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
 
-                        ██████████
-                      ██▓▓▓▓▓▓▓▓▓▓██              ════════════════════════════════════════▶
-                    ██▓▓▓▓▓▓▓▓▓▓▓▓▓▓██
-                   ████████████████████
-                  ██░░░░░░░░░░░░░░░░░░░░██
-                   ██                  ██
-                    ████████████████████
 ```
+
+**Репозиторий на GitHub:** [github.com/shuanat/tanks-warfare](https://github.com/shuanat/tanks-warfare)
 
 # Tanks: Warfare
 
@@ -35,8 +30,8 @@
 
 1. Откройте [git-scm.com/download/win](https://git-scm.com/download/win) и скачайте **64-bit Git for Windows**.
 2. Запустите установщик. Важные экраны:
-   - **Adjusting your PATH** — удобно выбрать *Git from the command line and also from 3rd-party software*, чтобы `git` был доступен в PowerShell и CMD.
-   - **Line ending conversions** — для Windows обычно подходит *Checkout Windows-style, commit Unix-style* (`core.autocrlf=true`).
+   - **Adjusting your PATH** — удобно выбрать _Git from the command line and also from 3rd-party software_, чтобы `git` был доступен в PowerShell и CMD.
+   - **Line ending conversions** — для Windows обычно подходит _Checkout Windows-style, commit Unix-style_ (`core.autocrlf=true`).
 3. Завершите установку и **перезапустите** терминал (или Cursor).
 
 **Вариант B — через winget (PowerShell от администратора не обязателен для пользовательской установки)**
@@ -166,7 +161,7 @@ npm run dev:client
 npm run build
 ```
 
-3. На VPS задайте **`STATIC_ROOT`** на каталог, где лежат **`index.html`** из `client/dist` и папка **`assets`** (можно скопировать всё содержимое `client/dist` + ваши `assets` рядом, как раньше в `/var/www/tanks`).
+1. На VPS задайте **`STATIC_ROOT`** на каталог, где лежат **`index.html`** из `client/dist` и папка **`assets`** (можно скопировать всё содержимое `client/dist` + ваши `assets` рядом, как раньше в `/var/www/tanks`).
 
 ```bash
 STATIC_ROOT=/var/www/tanks PORT=80 pm2 start server/dist/index.js --name tanks
@@ -178,11 +173,11 @@ STATIC_ROOT=/var/www/tanks PORT=80 pm2 start server/dist/index.js --name tanks
 
 ## Переменные окружения
 
-| Переменная    | Описание                                                                                                     |
-| ------------- | ------------------------------------------------------------------------------------------------------------ |
-| `PORT`        | HTTP + WebSocket. Локально по умолчанию **3033**; на VPS обычно **80** (задаётся в `.env` или в команде pm2) |
-| `STATIC_ROOT` | Каталог со статикой (`index.html`, `/assets/...`). По умолчанию: `client/dist` относительно репозитория      |
-| `NODE_ENV`    | `development` / `production`                                                                                 |
+| Переменная    | Описание                                                                                                           |
+| ------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `PORT`        | HTTP + WebSocket. Локально по умолчанию **3033**; на VPS обычно **80** (задаётся в `.env` или в команде pm2)       |
+| `STATIC_ROOT` | Каталог со статикой (`index.html`, `/assets/...`). По умолчанию: `client/dist` относительно репозитория            |
+| `NODE_ENV`    | `development` / `production`                                                                                       |
 | `LOG_LEVEL`   | Опционально: `error` / `warn` / `info` / `debug` — серверный лог (`server/logger.ts`). В prod по умолчанию `info`. |
 
 Клиент (только dev-сборка Vite):
