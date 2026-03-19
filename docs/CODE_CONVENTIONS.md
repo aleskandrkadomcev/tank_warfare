@@ -26,7 +26,7 @@
 
 - Запуск: `npm run lint`; автоисправление где возможно: `npm run lint:fix`.
 - Конфигурация: корневой `eslint.config.js` (flat config, ESLint 9+).
-- Игнорируются: `node_modules`, `client/dist`, `server/dist`, `shared/dist`, исходники `shared/src`, `server/**/*.ts`, `client/src/**/*.ts` (проверка TS — `npm run typecheck`), корневой легаси `index.html`.
+- Игнорируются: `node_modules`, `client/dist`, `server/dist`, `shared/dist`, исходники `shared/src`, `server/**/*.ts`, `client/src/**/*.ts` (проверка TS — `npm run typecheck`), архив `archive/**` (легаси HTML).
 - В **`client/src/game/gameClient.js`** отключены некоторые правила для постепенного выноса логики (см. `eslint.config.js`); новый код предпочтительно писать в **новых модулях** уже без ослаблений.
 
 ## CI

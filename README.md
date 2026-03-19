@@ -16,7 +16,7 @@
 
 # Tanks: Warfare
 
-Монолит (`index.html` + `server.js`) разнесён на **клиент (Vite)** и **модульный сервер (Node + WebSocket)**. Общий слой протокола и констант — **`shared/`** (TypeScript).
+Монолит (`archive/legacy-monolith/index.html` + `server.js`) разнесён на **клиент (Vite)** и **модульный сервер (Node + WebSocket)**. Общий слой протокола и констант — **`shared/`** (TypeScript).
 
 Участие в проекте регулируется [кодексом поведения](CODE_OF_CONDUCT.md).
 
@@ -197,7 +197,7 @@ client/
     lib/          — ассеты, аудио
     game/         — gameClient (логика; план дробить на simulation / render / net)
   public/assets/  — PNG, MP3 (не коммитятся, если большие)
-tools/            — extract-game-client.mjs (регенерация из legacy index при необходимости)
+tools/            — extract-game-client.mjs (регенерация из archive/legacy-monolith/index.html при необходимости)
 ```
 
 Подробнее см. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), план рефакторинга — [docs/REFACTORING_PLAN.md](docs/REFACTORING_PLAN.md).
@@ -208,4 +208,4 @@ tools/            — extract-game-client.mjs (регенерация из legac
 
 ## Легаси
 
-Корневой **`index.html`** с инлайн-скриптом можно оставить как архив или удалить после полного перехода на `client/dist`.
+Монолитный клиент лежит в **`archive/legacy-monolith/`** (`index.html` + `README.md`). Черновик `gameClient.js`: `node tools/extract-game-client.mjs`. Актуальная сборка — **`client/dist`**.

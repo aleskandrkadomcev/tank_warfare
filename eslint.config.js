@@ -12,7 +12,7 @@ export default [
       'server/dist/**',
       'server/**/*.ts',
       'client/src/**/*.ts',
-      'index.html',
+      'archive/**',
       '**/coverage/**',
     ],
   },

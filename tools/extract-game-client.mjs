@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
-const htmlPath = path.join(root, 'index.html');
+const htmlPath = path.join(root, 'archive', 'legacy-monolith', 'index.html');
 const outPath = path.join(root, 'client', 'src', 'game', 'gameClient.js');
 
 const html = fs.readFileSync(htmlPath, 'utf8');
