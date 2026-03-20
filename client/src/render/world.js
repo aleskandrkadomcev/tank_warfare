@@ -11,6 +11,11 @@ let bricksCanvas = null;
 let bricksCtx = null;
 let bricksCacheKey = '';
 
+/** Кэш «земля + сетка» целиком — не перерисовывать 2× fillRect паттерном на 3200×1800 каждый кадр. */
+let landCanvas = null;
+let landCtx = null;
+let landCacheKey = '';
+
 function ensureGridCanvas(w, h) {
     if (!gridCanvas) {
         gridCanvas = document.createElement('canvas');
@@ -45,43 +50,77 @@ function drawGridToCache(mapWidth, mapHeight, biome) {
     }
 }
 
+function ensureLandCanvas(w, h) {
+    if (!landCanvas) {
+        landCanvas = document.createElement('canvas');
+        landCtx = landCanvas.getContext('2d');
+    }
+    if (landCanvas.width !== w || landCanvas.height !== h) {
+        landCanvas.width = w;
+        landCanvas.height = h;
+    }
+}
+
+/**
+ * Собирает подложку в offscreen; ключ сбрасывается при смене карты/биома/готовности текстур.
+ */
+function rebuildLandCache(mapWidth, mapHeight, biome, cachedPatterns, grassImg, perlinImg) {
+    if (grassImg.complete && grassImg.naturalWidth === 0) {
+        cachedPatterns.grassBase = null;
+        cachedPatterns.perlinMask = null;
+    }
+    drawGridToCache(mapWidth, mapHeight, biome);
+    ensureLandCanvas(mapWidth, mapHeight);
+
+    let grassPat = null;
+    let perlinPat = null;
+    if (grassImg.complete && grassImg.naturalWidth > 0) {
+        grassPat = landCtx.createPattern(grassImg, 'repeat');
+        cachedPatterns.grassBase = grassPat || null;
+    } else {
+        cachedPatterns.grassBase = null;
+    }
+    if (perlinImg.complete && perlinImg.naturalWidth > 0) {
+        perlinPat = landCtx.createPattern(perlinImg, 'repeat');
+        cachedPatterns.perlinMask = perlinPat || null;
+    } else {
+        cachedPatterns.perlinMask = null;
+    }
+
+    if (grassPat) {
+        landCtx.fillStyle = grassPat;
+        landCtx.fillRect(0, 0, mapWidth, mapHeight);
+        if (perlinPat) {
+            landCtx.save();
+            landCtx.globalCompositeOperation = 'overlay';
+            landCtx.globalAlpha = 0.3;
+            landCtx.fillStyle = perlinPat;
+            landCtx.fillRect(0, 0, mapWidth, mapHeight);
+            landCtx.restore();
+        }
+    } else {
+        landCtx.fillStyle = ['#888', '#eee', '#deb887'][biome];
+        landCtx.fillRect(0, 0, mapWidth, mapHeight);
+    }
+    landCtx.globalAlpha = 1;
+    landCtx.globalCompositeOperation = 'source-over';
+    landCtx.drawImage(gridCanvas, 0, 0);
+}
+
 /**
  * @param {CanvasRenderingContext2D} ctx — уже в мировых координатах (после translate/scale)
  * @param {object} o
  */
 export function drawMapBackground(ctx, o) {
     const { mapWidth, mapHeight, biome, cachedPatterns, grassImg, perlinImg } = o;
-    if (grassImg.complete && grassImg.naturalWidth === 0) {
-        cachedPatterns.grassBase = null;
-        cachedPatterns.perlinMask = null;
+    const grassOk = grassImg.complete && grassImg.naturalWidth > 0;
+    const perlinOk = perlinImg.complete && perlinImg.naturalWidth > 0;
+    const key = `${mapWidth}|${mapHeight}|${biome}|${grassOk}|${perlinOk}`;
+    if (key !== landCacheKey || landCanvas?.width !== mapWidth || landCanvas?.height !== mapHeight) {
+        landCacheKey = key;
+        rebuildLandCache(mapWidth, mapHeight, biome, cachedPatterns, grassImg, perlinImg);
     }
-    if (!cachedPatterns.grassBase && grassImg.complete && grassImg.naturalWidth > 0) {
-        const pat = ctx.createPattern(grassImg, 'repeat');
-        if (pat) cachedPatterns.grassBase = pat;
-    }
-    if (!cachedPatterns.perlinMask && perlinImg.complete && perlinImg.naturalWidth > 0) {
-        const pat = ctx.createPattern(perlinImg, 'repeat');
-        if (pat) cachedPatterns.perlinMask = pat;
-    }
-
-    if (cachedPatterns.grassBase) {
-        ctx.fillStyle = cachedPatterns.grassBase;
-        ctx.fillRect(0, 0, mapWidth, mapHeight);
-        if (cachedPatterns.perlinMask) {
-            ctx.save();
-            ctx.globalCompositeOperation = 'overlay';
-            ctx.globalAlpha = 0.3;
-            ctx.fillStyle = cachedPatterns.perlinMask;
-            ctx.fillRect(0, 0, mapWidth, mapHeight);
-            ctx.restore();
-        }
-    } else {
-        ctx.fillStyle = ['#888', '#eee', '#deb887'][biome];
-        ctx.fillRect(0, 0, mapWidth, mapHeight);
-    }
-
-    drawGridToCache(mapWidth, mapHeight, biome);
-    ctx.drawImage(gridCanvas, 0, 0);
+    ctx.drawImage(landCanvas, 0, 0);
 }
 
 function ensureBricksCanvas(w, h) {

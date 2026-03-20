@@ -45,6 +45,9 @@ let camY = 0;
 let fpsSmoothed = 0;
 const FPS_SMOOTH = 0.12;
 
+/** Последний отрисованный снимок панели бустов — без смены не трогаем innerHTML (дорого для layout). */
+let boostPanelRenderSig = '';
+
 attachGameInput(canvas);
 
 function getNickname() {
@@ -219,6 +222,7 @@ function removeBot() {
 }
 
 function startGameClient() {
+    boostPanelRenderSig = '';
     document.getElementById('lobby').style.display = 'none';
     document.getElementById('ui-game').style.display = 'block';
     document.getElementById('score-board').style.display = 'block';
@@ -238,6 +242,7 @@ function startGameClient() {
 }
 
 function resetMatch() {
+    boostPanelRenderSig = '';
     battle.myScore = 0;
     battle.enemyScore = 0;
     updateUI();
@@ -268,10 +273,12 @@ function resetMatch() {
     }
     session.gameStarted = true;
     playSound_StartMusic();
+    updateInventoryUI();
     setTimeout(spawnMyTank, 500);
 }
 
 function spawnMyTank() {
+    boostPanelRenderSig = '';
     bullets.length = 0;
     tank.hp = TANK_MAX_HP;
     tank.isDead = false;
@@ -322,6 +329,10 @@ function resize() {
 }
 
 function updateInventoryUI() {
+    if (!session.gameStarted) return;
+    const sig = `${tank.smokeCount}|${tank.mineCount}|${tank.rocketCount}|${Math.ceil(tank.damageBoostTimer)}|${Math.ceil(tank.speedBoostTimer)}`;
+    if (sig === boostPanelRenderSig) return;
+    boostPanelRenderSig = sig;
     let html = '';
     html += `<div class="boost-indicator"><div class="boost-icon" style="background:#888;border:1px solid #fff;"></div>Дым: ${tank.smokeCount}</div>`;
     html += `<div class="boost-indicator"><div class="boost-icon" style="background:#2e4634;border:1px solid #fff;"></div>Мины: ${tank.mineCount}</div>`;

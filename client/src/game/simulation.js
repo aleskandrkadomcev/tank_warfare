@@ -18,6 +18,7 @@ import {
     GRIP,
     MAX_SPEED_FORWARD,
     MAX_SPEED_REVERSE,
+    MAX_TRACKS_IN_WORLD,
     NATURAL_DRAG,
     TANK_MAX_HP,
     TRACK_LIFETIME,
@@ -408,6 +409,7 @@ export function runSimulation(dt, ctx) {
     updateBoosts(dt, send, updateInventoryUI);
     const now = performance.now();
     while (tracks.length > 0 && now - tracks[0].time > TRACK_LIFETIME) tracks.shift();
+    while (tracks.length > MAX_TRACKS_IN_WORLD) tracks.shift();
 }
 
 function updateBoosts(dt, send, updateInventoryUI) {

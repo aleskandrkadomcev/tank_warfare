@@ -6,13 +6,28 @@ import { BULLET_DAMAGE_BASE, TRACK_LIFETIME } from '../config/constants.js';
 /** Не рисуем частицы/дым с пренебрежимой непрозрачностью — экономия beginPath/arc/fill. */
 const PARTICLE_VIS_EPS = 0.002;
 
-export function drawTracks(ctx, tracks, now) {
+/**
+ * @param {{ camX: number, camY: number, halfW: number, halfH: number }} [viewWorld] — центр камеры и полуразмеры видимой области в мировых координатах; без аргумента рисуем все следы.
+ */
+export function drawTracks(ctx, tracks, now, viewWorld) {
     if (tracks.length === 0) return;
     const baseTransform = ctx.getTransform();
+    let minX;
+    let maxX;
+    let minY;
+    let maxY;
+    if (viewWorld) {
+        const m = 32;
+        minX = viewWorld.camX - viewWorld.halfW - m;
+        maxX = viewWorld.camX + viewWorld.halfW + m;
+        minY = viewWorld.camY - viewWorld.halfH - m;
+        maxY = viewWorld.camY + viewWorld.halfH + m;
+    }
     for (const t of tracks) {
         const age = now - t.time;
         const alpha = Math.max(0, 1 - age / TRACK_LIFETIME);
         if (alpha < PARTICLE_VIS_EPS) continue;
+        if (viewWorld && (t.x < minX || t.x > maxX || t.y < minY || t.y > maxY)) continue;
         ctx.setTransform(baseTransform);
         ctx.translate(t.x, t.y);
         ctx.rotate(t.angle);

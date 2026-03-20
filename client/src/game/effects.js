@@ -1,6 +1,7 @@
 /**
  * Локальные эффекты (частицы, следы, дым, взрывы) — мутация world, без сети.
  */
+import { MAX_TRACKS_IN_WORLD } from '../config/constants.js';
 import { playSound_Explosion } from '../lib/audio.js';
 import { world } from './gameState.js';
 
@@ -60,6 +61,8 @@ export function spawnParticles(x, y, color, count, type = 'spark') {
 
 export function addTrack(x, y, angle) {
     tracks.push({ x, y, angle, time: performance.now() });
+    /** Следы с сети приходят вне `runSimulation` — иначе массив раздувается выше лимита до следующего кадра. */
+    while (tracks.length > MAX_TRACKS_IN_WORLD) tracks.shift();
 }
 
 export function createSmokeCloud(x, y) {

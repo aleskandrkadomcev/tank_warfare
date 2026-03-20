@@ -78,7 +78,9 @@ export function drawGameFrame(ctx, view) {
     boosts.forEach((b) => drawBoostIcon(ctx, b.x, b.y, b.type));
 
     const now = typeof view.frameTimeMs === 'number' ? view.frameTimeMs : performance.now();
-    drawTracks(ctx, tracks, now);
+    const halfW = width / 2 / scaleFactor;
+    const halfH = height / 2 / scaleFactor;
+    drawTracks(ctx, tracks, now, { camX, camY, halfW, halfH });
 
     drawParticlesSparks(ctx, particles);
 
