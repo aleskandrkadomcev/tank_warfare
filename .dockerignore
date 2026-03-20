@@ -1,0 +1,14 @@
+node_modules
+client/dist
+client/node_modules
+server/dist
+shared/dist
+.git
+.cursor
+.k8s-deploy
+investigation
+*.log
+.env
+.env.*
+!.env.example
+!.env.production.example
