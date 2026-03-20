@@ -9,3 +9,7 @@ server/dist/
 
 # Локальные следы расследований (могут содержать URL прод/стейджа из браузера)
 investigation/
+
+# Логи отладки Cursor / NDJSON с метриками окружения
+.cursor/debug-*.log
+debug-*.log

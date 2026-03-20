@@ -51,6 +51,6 @@ alwaysApply: true
 
 ## Личная инфраструктура и секреты
 
-- Папка **`.k8s-deploy/`** в **`.gitignore`** — не добавлять в коммиты; в примерах и доках не использовать **реальные** внутренние IP, FQDN личного кластера, токены DuckDNS/registry, вывод `kubectl` с идентификаторами окружения.
+- Папка **`.k8s-deploy/`** в **`.gitignore`** — не добавлять в коммиты; в примерах и доках не использовать **реальные** внутренние IP, FQDN личного кластера, токены DuckDNS/registry, вывод `kubectl` с идентификаторами окружения. Секреты деплоя — **Vault KV v2**: `TANKS_VAULT_HOME_LAB=1` (пути как в home-network-lab: `api/duckdns`, `applications/tanks`) или `TANKS_VAULT_SECRET_PATH` — см. `.k8s-deploy/README.md` §0.1; либо `$env:TANKS_*`, не секреты в `config.ps1` в git.
 - Каталог **`investigation/`** в **`.gitignore`** (trace Chrome и т.п. часто содержат полные URL сессии).
 - Если секрет уже мог утечь (чат, скрин, публичный gist) — пользователю нужна **ротация** токена/ключа, а не только правка файла.
