@@ -14,7 +14,8 @@ import {
 import { findBotPath, worldToCell } from '../game/pathfinding.js';
 import { lobbies, type Lobby, type LobbyBotBullet } from './lobbyStore.js';
 
-const BOT_TICK_MS = 100;
+/** ~30 тиков/сек — плавнее движение ботов на клиенте. */
+const BOT_TICK_MS = Math.round(1000 / 30);
 const BOT_VIEW_DISTANCE = 900;
 const BOT_FIRE_DISTANCE = 720;
 const BOT_AIM_THRESHOLD = 0.25;

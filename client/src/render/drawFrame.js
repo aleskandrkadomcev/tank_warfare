@@ -2,6 +2,7 @@
  * Полный кадр мира: камера, слои world → tanks → effects → UI.
  */
 import { clampCamera } from '../game/collision.js';
+import { DETECTION_MEMORY_MS, DETECTION_RADIUS } from '../config/constants.js';
 import { shadeColor } from '../game/colorUtils.js';
 import { assets } from '../lib/assets.js';
 import {
@@ -77,6 +78,15 @@ export function drawGameFrame(ctx, view) {
     drawBricks(ctx, bricks, level.biome, level.mapWidth, level.mapHeight, view.bricksDrawRevision ?? 0);
     boosts.forEach((b) => drawBoostIcon(ctx, b.x, b.y, b.type));
 
+    // Круг обзора игрока: слой мира под танками (виден всегда, включая мобилки).
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(tank.x, tank.y, DETECTION_RADIUS, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255,255,255,0.26)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+
     const now = typeof view.frameTimeMs === 'number' ? view.frameTimeMs : performance.now();
     const halfW = width / 2 / scaleFactor;
     const halfH = height / 2 / scaleFactor;
@@ -88,6 +98,7 @@ export function drawGameFrame(ctx, view) {
 
     for (const id in enemyTanks) {
         const et = enemyTanks[id];
+        if ((et.lastSeenAt ?? now) + DETECTION_MEMORY_MS < now) continue;
         if (et.hp > 0) {
             const baseColor = session.playerData[id]?.color || '#f44336';
             et.color = baseColor;
@@ -111,6 +122,7 @@ export function drawGameFrame(ctx, view) {
     beginNicknameDrawPass(ctx);
     for (const id in enemyTanks) {
         const et = enemyTanks[id];
+        if ((et.lastSeenAt ?? now) + DETECTION_MEMORY_MS < now) continue;
         if (et.hp > 0) drawNickname(ctx, et, false, session);
     }
     if (tank.hp > 0) {

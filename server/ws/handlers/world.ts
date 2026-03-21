@@ -1,10 +1,11 @@
 import { ServerMsg } from '#shared/protocol.js';
 import type { WebSocket, WebSocketServer } from 'ws';
-import { BRICK_SIZE } from '../../constants.js';
+import { BRICK_SIZE, SMOKE_LIFETIME_MS } from '../../constants.js';
 import { buildBotPathGrid } from '../../game/pathfinding.js';
 import { broadcastGame } from '../broadcast.js';
 import type { Lobby, LobbyRocket } from '../lobbyStore.js';
 import { lobbies } from '../lobbyStore.js';
+import { handleDeath } from './gameState.js';
 
 function runRocketExplosion(lobby: Lobby, rocket: LobbyRocket): void {
     if (!lobby.gameStarted || rocket.exploded) return;
@@ -51,18 +52,28 @@ function runRocketExplosion(lobby: Lobby, rocket: LobbyRocket): void {
     });
 
     lobby.players.forEach((p) => {
-        if (p.lastPos && p.readyState === 1 && p.lastPos.hp > 0) {
+        if (p.lastPos && p.lastPos.hp > 0) {
             const dist = Math.hypot(p.lastPos.x - rocket.tx, p.lastPos.y - rocket.ty);
             if (dist < 90) {
-                p.send(
-                    JSON.stringify({
-                        type: ServerMsg.EXPLOSION_DAMAGE,
-                        damage: 50,
-                        x: rocket.tx,
-                        y: rocket.ty,
-                        rocketId: rocket.id,
-                    }),
-                );
+                const damage = 50;
+                const nextHp = Math.max(0, p.lastPos.hp - damage);
+                p.lastPos.hp = nextHp;
+                if (p.isBot) {
+                    p.hp = nextHp;
+                    if (nextHp <= 0) {
+                        handleDeath({} as WebSocketServer, p, {});
+                    }
+                } else if (p.readyState === 1) {
+                    p.send(
+                        JSON.stringify({
+                            type: ServerMsg.EXPLOSION_DAMAGE,
+                            damage,
+                            x: rocket.tx,
+                            y: rocket.ty,
+                            rocketId: rocket.id,
+                        }),
+                    );
+                }
             }
         }
     });
@@ -179,6 +190,13 @@ export function handleBricksDestroyBatch(_wss: WebSocketServer, ws: WebSocket, d
 export function handleDeploySmoke(_wss: WebSocketServer, ws: WebSocket, data: Record<string, unknown>): void {
     const lobby = ws.lobbyId ? lobbies[ws.lobbyId] : undefined;
     if (lobby?.gameStarted) {
+        const now = Date.now();
+        lobby.smokes = lobby.smokes.filter((s) => s.expiresAt > now);
+        lobby.smokes.push({
+            x: data.x as number,
+            y: data.y as number,
+            expiresAt: now + SMOKE_LIFETIME_MS,
+        });
         broadcastGame(lobby, {
             type: ServerMsg.DEPLOY_SMOKE,
             x: data.x as number,

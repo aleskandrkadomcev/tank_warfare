@@ -10,6 +10,7 @@ import {
     BRICK_SIZE,
     BULLET_DAMAGE_BASE,
     COLLISION_DAMAGE,
+    DETECTION_MEMORY_MS,
     ROCKET_FLIGHT_TIME,
     SPAWN_IMMUNITY_TIME,
 } from '../config/constants.js';
@@ -373,6 +374,14 @@ function handleBoostPickup(d: Record<string, unknown>) {
 
 function handleRemoteState(d: Record<string, unknown>) {
     if (d.id === session.myId) return;
+    const now = performance.now();
+    Object.keys(battle.enemyTanks).forEach((id) => {
+        const enemy = battle.enemyTanks[id];
+        if (!enemy) return;
+        if ((enemy.lastSeenAt ?? 0) + DETECTION_MEMORY_MS < now) {
+            delete battle.enemyTanks[id];
+        }
+    });
     if (!battle.enemyTanks[d.id as string]) {
         battle.enemyTanks[d.id as string] = {
             ...battle.tank,
@@ -382,6 +391,7 @@ function handleRemoteState(d: Record<string, unknown>) {
             team: d.team as number,
             color: session.playerData[d.id as string]?.color || '#f44336',
             spawnImmunityTimer: (d.spawnImmunityTimer as number) || SPAWN_IMMUNITY_TIME,
+            lastSeenAt: now,
         };
     }
     const et = battle.enemyTanks[d.id as string];
@@ -413,6 +423,7 @@ function handleRemoteState(d: Record<string, unknown>) {
     et.y = d.y as number;
     et.angle = d.angle as number;
     et.turretAngle = d.turretAngle as number;
+    et.lastSeenAt = now;
 }
 
 function handleBullet(d: Record<string, unknown>) {

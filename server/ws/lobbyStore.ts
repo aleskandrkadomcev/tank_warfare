@@ -31,6 +31,13 @@ export type LobbyMine = {
     triggered: boolean;
 };
 
+export type LobbySmokeCloud = {
+    x: number;
+    y: number;
+    /** Когда облако исчезает (Date.now()). */
+    expiresAt: number;
+};
+
 export type LobbyBotBullet = {
     bulletId: string;
     x: number;
@@ -57,6 +64,13 @@ export type Lobby = {
     gameStarted: boolean;
     mapData: MapData | null;
     aiTickHandle: ReturnType<typeof setInterval> | null;
+    /** Активные облака дыма (серверная копия для обнаружения). */
+    smokes: LobbySmokeCloud[];
+    /**
+     * Память обнаружения:
+     * ключ `${team}:${targetId}` -> timestamp (ms), до которого враг остаётся видим.
+     */
+    detectionVisibleUntil: Record<string, number>;
 };
 
 export const lobbies: Record<string, Lobby> = {};

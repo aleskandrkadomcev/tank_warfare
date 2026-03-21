@@ -33,3 +33,9 @@ export const BOOST_PICKUP_RADIUS = 32;
 /** Только отрисовка иконки бонуса/абилки; `BRICK_SIZE` и кирпичи не меняются. */
 export const BOOST_ICON_SCALE = 1.55;
 export const SPAWN_IMMUNITY_TIME = 3.0;
+/** Радиус отображаемого круга обнаружения игрока. */
+export const DETECTION_RADIUS = 900;
+/** Как долго держим последнюю видимую позицию врага, если сервер перестал слать его стейт. */
+export const DETECTION_MEMORY_MS = 2000;
+/** Резерв под механику леса (позже): в лесу радиус в 2 раза ниже. */
+export const FOREST_DETECTION_RADIUS_FACTOR = 0.5;

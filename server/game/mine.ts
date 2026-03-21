@@ -2,6 +2,8 @@ import { BRICK_SIZE } from '../constants.js';
 import type { Lobby, LobbyMine } from '../ws/lobbyStore.js';
 import { broadcastGame } from '../ws/broadcast.js';
 import { ServerMsg } from '#shared/protocol.js';
+import { handleDeath } from '../ws/handlers/gameState.js';
+import type { WebSocketServer } from 'ws';
 
 export function triggerMine(lobby: Lobby, mine: LobbyMine): void {
     mine.triggered = true;
@@ -47,17 +49,27 @@ export function triggerMine(lobby: Lobby, mine: LobbyMine): void {
         });
 
         lobby.players.forEach((p) => {
-            if (p.lastPos && p.readyState === 1 && p.lastPos.hp > 0) {
+            if (p.lastPos && p.lastPos.hp > 0) {
                 const dist = Math.hypot(p.lastPos.x - mine.x, p.lastPos.y - mine.y);
                 if (dist < 90) {
-                    p.send(
-                        JSON.stringify({
-                            type: ServerMsg.EXPLOSION_DAMAGE,
-                            damage: 50,
-                            x: mine.x,
-                            y: mine.y,
-                        }),
-                    );
+                    const damage = 50;
+                    const nextHp = Math.max(0, p.lastPos.hp - damage);
+                    p.lastPos.hp = nextHp;
+                    if (p.isBot) {
+                        p.hp = nextHp;
+                        if (nextHp <= 0) {
+                            handleDeath({} as WebSocketServer, p, {});
+                        }
+                    } else if (p.readyState === 1) {
+                        p.send(
+                            JSON.stringify({
+                                type: ServerMsg.EXPLOSION_DAMAGE,
+                                damage,
+                                x: mine.x,
+                                y: mine.y,
+                            }),
+                        );
+                    }
                 }
             }
         });

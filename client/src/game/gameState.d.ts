@@ -72,6 +72,7 @@ export interface LocalTank {
 export interface EnemyTank extends LocalTank {
     id: string;
     team: number;
+    lastSeenAt?: number;
 }
 
 /** Минимум для движков в `session` (реализация — `TankEngine` в audio). */

@@ -29,6 +29,8 @@ export function handleCreateLobby(wss: WebSocketServer, ws: WebSocket, data: Rec
         gameStarted: false,
         mapData: null,
         aiTickHandle: null,
+        detectionVisibleUntil: {},
+        smokes: [],
     };
     ws.send(
         JSON.stringify({
