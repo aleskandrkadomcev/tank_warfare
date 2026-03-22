@@ -2,8 +2,6 @@ import { BRICK_SIZE, MAP_HEIGHT, MAP_WIDTH } from '#shared/map.js';
 import { FOREST_SECTION_SIZE, FOREST_SECTION_STEP } from '../constants.js';
 import type { MapData } from '../ws/lobbyStore.js';
 
-const FOREST_GROUPS_MIN = 1;
-const FOREST_GROUPS_MAX = 4;
 const FOREST_GROUP_SIZE_MIN = 3;
 const FOREST_GROUP_SIZE_MAX = 12;
 
@@ -17,18 +15,18 @@ function overlapsBrick(bricks: { x: number; y: number }[], fx: number, fy: numbe
     });
 }
 
-function isInsideMap(x: number, y: number): boolean {
-    return x >= 0 && y >= 0 && x + FOREST_SECTION_SIZE <= MAP_WIDTH && y + FOREST_SECTION_SIZE <= MAP_HEIGHT;
+function isInsideMap(x: number, y: number, w: number, h: number): boolean {
+    return x >= 0 && y >= 0 && x + FOREST_SECTION_SIZE <= w && y + FOREST_SECTION_SIZE <= h;
 }
 
 function forestKey(x: number, y: number): string {
     return `${x}:${y}`;
 }
 
-function tryGenerateForestGroups(bricks: { x: number; y: number }[]): { x: number; y: number }[] {
+function tryGenerateForestGroups(bricks: { x: number; y: number }[], mapW: number, mapH: number, forestGroupsMax: number): { x: number; y: number }[] {
     const forests: { x: number; y: number }[] = [];
     const used = new Set<string>();
-    const groupsCount = Math.floor(Math.random() * (FOREST_GROUPS_MAX - FOREST_GROUPS_MIN + 1)) + FOREST_GROUPS_MIN;
+    const groupsCount = Math.floor(Math.random() * (forestGroupsMax - 1 + 1)) + 1;
 
     for (let groupIndex = 0; groupIndex < groupsCount; groupIndex++) {
         const groupSize =
@@ -36,11 +34,11 @@ function tryGenerateForestGroups(bricks: { x: number; y: number }[]): { x: numbe
         let placed = false;
 
         for (let attempts = 0; attempts < 120 && !placed; attempts++) {
-            const startX = Math.floor(Math.random() * (MAP_WIDTH - FOREST_SECTION_SIZE));
-            const startY = Math.floor(Math.random() * (MAP_HEIGHT - FOREST_SECTION_SIZE));
+            const startX = Math.floor(Math.random() * (mapW - FOREST_SECTION_SIZE));
+            const startY = Math.floor(Math.random() * (mapH - FOREST_SECTION_SIZE));
             const sx = Math.floor(startX / FOREST_SECTION_STEP) * FOREST_SECTION_STEP;
             const sy = Math.floor(startY / FOREST_SECTION_STEP) * FOREST_SECTION_STEP;
-            if (!isInsideMap(sx, sy) || overlapsBrick(bricks, sx, sy)) continue;
+            if (!isInsideMap(sx, sy, mapW, mapH) || overlapsBrick(bricks, sx, sy)) continue;
             if (used.has(forestKey(sx, sy))) continue;
 
             const group: { x: number; y: number }[] = [{ x: sx, y: sy }];
@@ -59,7 +57,7 @@ function tryGenerateForestGroups(bricks: { x: number; y: number }[]): { x: numbe
                 const nx = base.x + dir.x;
                 const ny = base.y + dir.y;
                 const key = forestKey(nx, ny);
-                if (!isInsideMap(nx, ny)) continue;
+                if (!isInsideMap(nx, ny, mapW, mapH)) continue;
                 if (local.has(key) || used.has(key)) continue;
                 if (overlapsBrick(bricks, nx, ny)) continue;
                 group.push({ x: nx, y: ny });
@@ -79,12 +77,19 @@ function tryGenerateForestGroups(bricks: { x: number; y: number }[]): { x: numbe
     return forests;
 }
 
-export function generateMapData(): MapData {
-    const bricks: { x: number; y: number }[] = [];
-    const biome = Math.floor(Math.random() * 3);
-    const buildings: { x: number; y: number; w: number; h: number }[] = [];
+export function generateMapData(mapSize?: string): MapData {
+    let mapW = MAP_WIDTH;
+    let mapH = MAP_HEIGHT;
+    if (mapSize === 'medium') { mapW = Math.round(MAP_WIDTH * 1.3); mapH = Math.round(MAP_HEIGHT * 1.3); }
+    else if (mapSize === 'large') { mapW = Math.round(MAP_WIDTH * 1.6); mapH = Math.round(MAP_HEIGHT * 1.6); }
 
-    for (let i = 0; i < 15; i++) {
+    const bricks: { x: number; y: number }[] = [];
+    const biome = 0;
+    const buildings: { x: number; y: number; w: number; h: number }[] = [];
+    const buildingCount = mapSize === 'large' ? 24 : mapSize === 'medium' ? 20 : 15;
+    const forestGroupsMax = mapSize === 'large' ? 7 : mapSize === 'medium' ? 5 : 4;
+
+    for (let i = 0; i < buildingCount; i++) {
         const w = (Math.floor(Math.random() * 6) + 3) * BRICK_SIZE;
         const h = (Math.floor(Math.random() * 3) + 3) * BRICK_SIZE;
         let valid = false;
@@ -92,7 +97,7 @@ export function generateMapData(): MapData {
         let b: { x: number; y: number; w: number; h: number } | null = null;
 
         while (!valid && attempts < 50) {
-            b = { x: Math.random() * (MAP_WIDTH - w), y: Math.random() * (MAP_HEIGHT - h), w, h };
+            b = { x: Math.random() * (mapW - w), y: Math.random() * (mapH - h), w, h };
             valid = true;
             for (const other of buildings) {
                 if (
@@ -118,6 +123,6 @@ export function generateMapData(): MapData {
         }
     }
 
-    const forests = tryGenerateForestGroups(bricks);
-    return { bricks, forests, biome, w: MAP_WIDTH, h: MAP_HEIGHT };
+    const forests = tryGenerateForestGroups(bricks, mapW, mapH, forestGroupsMax);
+    return { bricks, forests, biome, w: mapW, h: mapH };
 }

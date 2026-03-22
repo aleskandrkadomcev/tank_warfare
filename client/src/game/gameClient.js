@@ -118,6 +118,7 @@ function createLobby() {
                 nickname: nick,
                 lobbyName: name,
                 color: session.myColor,
+                mapSize: document.getElementById('mapSizeSelect')?.value || 'small',
             }),
         300,
     );
@@ -162,6 +163,7 @@ function showLobby(id, name, isHost) {
     document.getElementById('btnStart').style.display = isHost ? 'inline-block' : 'none';
     document.getElementById('btnAddBot').style.display = isHost ? 'inline-block' : 'none';
     document.getElementById('btnRemoveBot').style.display = isHost ? 'inline-block' : 'none';
+    document.getElementById('mapSizeSelector').style.display = isHost ? 'block' : 'none';
     document.getElementById('lobbyNickInput').value = session.myNickname;
     document.getElementById('lobbyNickInput').oninput = (e) => {
         session.myNickname = sanitize(e.target.value, 12);
@@ -211,7 +213,7 @@ function toggleReady() {
     sendGameMessage({ type: ClientMsg.TOGGLE_READY });
 }
 function startGame() {
-    sendGameMessage({ type: ClientMsg.START_GAME });
+    sendGameMessage({ type: ClientMsg.START_GAME, mapSize: document.getElementById('mapSizeSelect')?.value || 'small' });
 }
 
 function addBot() {
@@ -389,6 +391,7 @@ function loop(ts) {
         rockets,
         cachedPatterns,
         bricksDrawRevision: world.bricksDrawRevision,
+        dt,
         frameTimeMs: ts,
         onRocketSmoke: (rx, ry) => spawnParticles(rx, ry, '#888', 1, 'smoke'),
     });

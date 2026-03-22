@@ -40,6 +40,7 @@ export type ClientCreateLobbyMessage = {
     nickname?: string;
     lobbyName?: string;
     color?: string;
+    mapSize?: string;
 };
 
 export type ClientJoinLobbyMessage = {

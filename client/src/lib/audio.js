@@ -26,13 +26,15 @@ export function playSound_Shot(vol = 1) {
   s.play().catch(() => { });
 }
 
-export function playSound_Hit() {
+export function playSound_Hit(vol = 1) {
   const s = assets.sounds.hit.cloneNode(true);
+  s.volume = Math.max(0, Math.min(1, vol));
   s.play().catch(() => { });
 }
 
-export function playSound_Explosion() {
+export function playSound_Explosion(vol = 1) {
   const s = assets.sounds.explosion.cloneNode(true);
+  s.volume = Math.max(0, Math.min(1, vol));
   s.play().catch(() => { });
 }
 
@@ -60,8 +62,9 @@ export function playSound_Smoke() {
   tone(100, 0.3, 'sine', 0.1);
 }
 
-export function playBombBeep() {
-  for (let i = 0; i < 5; i++) tone(1500, 0.05, 'square', 0.15, null, i * 0.1);
+export function playBombBeep(vol = 1) {
+  const v = 0.15 * Math.max(0, Math.min(1, vol));
+  for (let i = 0; i < 5; i++) tone(1500, 0.05, 'square', v, null, i * 0.1);
 }
 
 export function playAlert() {

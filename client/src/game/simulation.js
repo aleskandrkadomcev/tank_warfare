@@ -36,6 +36,7 @@ import {
     playSound_Smoke,
     playSound_Speed,
 } from '../lib/audio.js';
+import { triggerShake } from './cameraShake.js';
 import {
     checkBulletBrickCollision,
     clampTankCenterToMap,
@@ -243,7 +244,7 @@ export function runSimulation(dt, ctx) {
     const speedAbs = Math.abs(forwardSpeed);
     level.trackSpawnDist += speedAbs * dt;
     if (level.trackSpawnDist > 8) {
-        const off = 10;
+        const off = 18;
         addTrack(
             tank.x - Math.cos(tank.angle + Math.PI / 2) * off,
             tank.y - Math.sin(tank.angle + Math.PI / 2) * off,
@@ -304,6 +305,7 @@ export function runSimulation(dt, ctx) {
         bullets.push(b);
         tank.reload = reloadTime;
         playSound_Shot(1);
+        triggerShake('shot');
         spawnParticles(b.x, b.y, '#fff', 3, 'muzzle');
         send({
             type: ClientMsg.BULLET,

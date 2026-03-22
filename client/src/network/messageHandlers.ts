@@ -15,6 +15,8 @@ import {
     SPAWN_IMMUNITY_TIME,
 } from '../config/constants.js';
 import { battle, bumpBricksDrawRevision, level, session, world } from '../game/gameState.js';
+
+type WsMineLocal = { mineId: string; x: number; y: number };
 import {
     audioCtx,
     initAudio,
@@ -27,6 +29,7 @@ import {
     playSound_Victory,
     TankEngine,
 } from '../lib/audio.js';
+import { triggerShake } from '../game/cameraShake.js';
 
 type SendPayload = Record<string, unknown>;
 
@@ -175,7 +178,8 @@ function handlePlayerDied(d: Record<string, unknown>) {
             et.hp = 0;
             et.spawnImmunityTimer = SPAWN_IMMUNITY_TIME;
             gameMessageHooks.spawnParticles(et.x, et.y, '#ffeb3b', 20);
-            playSound_Explosion();
+            const vol = getVolumeByDistance(et.x, et.y);
+            playSound_Explosion(vol);
         }
     } else {
         const deathEl = document.getElementById('death-screen');
@@ -183,7 +187,7 @@ function handlePlayerDied(d: Record<string, unknown>) {
         battle.tank.hp = 0;
         battle.tank.isDead = true;
         gameMessageHooks.spawnParticles(battle.tank.x, battle.tank.y, '#f44336', 20);
-        playSound_Explosion();
+        playSound_Explosion(1);
         setTimeout(() => gameMessageHooks.spawnMyTank(), 2000);
     }
 }
@@ -195,6 +199,7 @@ function handleCollisionHit(_d: Record<string, unknown>) {
         }
         gameMessageHooks.spawnParticles(battle.tank.x, battle.tank.y, '#fff', 10);
         playSound_Hit();
+        triggerShake('hit');
         battle.tank.collisionTimer = 1;
         if (battle.tank.hp <= 0 && !battle.tank.isDead) {
             sendFn({ type: ClientMsg.DEATH });
@@ -209,6 +214,7 @@ function handleBulletHitMe(d: Record<string, unknown>) {
     }
     gameMessageHooks.spawnParticles(battle.tank.x, battle.tank.y, '#f44336', 5);
     playSound_Hit();
+    triggerShake('hit');
     if (d.bulletId) {
         const bi = world.bullets.findIndex((b: WsBullet) => b.bulletId === d.bulletId);
         if (bi !== -1) world.bullets.splice(bi, 1);
@@ -219,8 +225,10 @@ function handleBulletHitMe(d: Record<string, unknown>) {
     }
 }
 
-function handleBulletHitOther(_d?: Record<string, unknown>) {
-    playSound_Hit();
+function handleBulletHitOther(d: Record<string, unknown>) {
+    const hx = (d.hitX as number) ?? battle.tank.x;
+    const hy = (d.hitY as number) ?? battle.tank.y;
+    playSound_Hit(getVolumeByDistance(hx, hy));
 }
 
 function handleBulletRemove(d: Record<string, unknown>) {
@@ -230,10 +238,14 @@ function handleBulletRemove(d: Record<string, unknown>) {
 
 function handleBulletHitVisual(d: Record<string, unknown>) {
     gameMessageHooks.spawnParticles(d.hitX as number, d.hitY as number, '#ffeb3b', 3);
+    const vol = getVolumeByDistance(d.hitX as number, d.hitY as number);
+    if (vol > 0.05) playSound_Hit(vol);
 }
 
 function handleExplosionEvent(d: Record<string, unknown>) {
     gameMessageHooks.createExplosion(d.x as number, d.y as number, d.radius as number);
+    const distToExplosion = Math.hypot(battle.tank.x - (d.x as number), battle.tank.y - (d.y as number));
+    if (distToExplosion < 500) triggerShake('explosionNear');
     const destroyedBricks = d.destroyedBricks as { x: number; y: number }[] | undefined;
     if (destroyedBricks && destroyedBricks.length > 0) {
         let bricksRemoved = false;
@@ -271,6 +283,7 @@ function handleExplosionDamage(d: Record<string, unknown>) {
     }
     gameMessageHooks.spawnParticles(battle.tank.x, battle.tank.y, '#f44336', 10);
     playSound_Hit();
+    triggerShake('explosionDamage');
     if (battle.tank.hp <= 0 && !battle.tank.isDead) {
         sendFn({ type: ClientMsg.DEATH });
         battle.tank.isDead = true;
@@ -293,7 +306,9 @@ function handleDeployMine(d: Record<string, unknown>) {
 }
 
 function handleMineTriggered(d: Record<string, unknown>) {
-    playBombBeep();
+    const mine = world.mines.find((x: WsMineLocal) => x.mineId === d.mineId);
+    const mineVol = mine ? getVolumeByDistance(mine.x, mine.y) : 1;
+    playBombBeep(mineVol);
     const m = world.mines.find((x: WsMine) => x.mineId === d.mineId);
     if (m) m.triggered = true;
 }
@@ -415,7 +430,7 @@ function handleRemoteState(d: Record<string, unknown>) {
     const dist = Math.hypot(dx, dy);
     level.trackSpawnDist += dist;
     if (level.trackSpawnDist > 8 && et.hp > 0) {
-        const off = 10;
+        const off = 18;
         const a = d.angle as number;
         gameMessageHooks.addTrack(
             (d.x as number) - Math.cos(a + Math.PI / 2) * off,

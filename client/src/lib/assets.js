@@ -4,12 +4,15 @@ import perlinMaskUrl from '../game-assets/images/perlin_mask.png?url';
 import forestUrl from '../game-assets/images/forest.png?url';
 import tankBaseUrl from '../game-assets/images/tank_base_green.png?url';
 import tankTurretUrl from '../game-assets/images/tank_turret_green.png?url';
+import shadowBrickUrl from '../game-assets/images/shadow_brick.png?url';
+import brickUrl from '../game-assets/images/brick.png?url';
+import shadowForestUrl from '../game-assets/images/shadow_forest.png?url';
 import brickHitUrl from '../game-assets/sounds/brick_hit.mp3?url';
 import explosionUrl from '../game-assets/sounds/explosion.mp3?url';
 import hitUrl from '../game-assets/sounds/hit.mp3?url';
 import shootUrl from '../game-assets/sounds/shoot.mp3?url';
 
-const totalAssets = 10;
+const totalAssets = 13;
 let assetsLoadedCount = 0;
 
 function checkAssetsLoaded(assets) {
@@ -29,6 +32,9 @@ function createAssets() {
       forest: new Image(),
       tankBase: new Image(),
       tankTurret: new Image(),
+      shadowBrick: new Image(),
+      shadowForest: new Image(),
+      brick: new Image(),
     },
     sounds: {
       shoot: new Audio(),
@@ -46,6 +52,9 @@ function createAssets() {
   assets.images.forest.src = forestUrl;
   assets.images.tankBase.src = tankBaseUrl;
   assets.images.tankTurret.src = tankTurretUrl;
+  assets.images.shadowBrick.src = shadowBrickUrl;
+  assets.images.shadowForest.src = shadowForestUrl;
+  assets.images.brick.src = brickUrl;
   assets.sounds.shoot.src = shootUrl;
   assets.sounds.hit.src = hitUrl;
   assets.sounds.explosion.src = explosionUrl;

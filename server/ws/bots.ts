@@ -1,6 +1,6 @@
 import { ClientMsg, ServerMsg } from '#shared/protocol.js';
 import type { WebSocket, WebSocketServer } from 'ws';
-import { BRICK_SIZE, TANK_MAX_HP } from '../constants.js';
+import { BRICK_SIZE, DETECTION_RADIUS_SMALL, FOREST_SECTION_SIZE, SMOKE_CLOUD_RADIUS, TANK_MAX_HP } from '../constants.js';
 import { log } from '../logger.js';
 import { broadcastGame } from './broadcast.js';
 import { handleDealDamage } from './handlers/combat.js';
@@ -154,6 +154,67 @@ function setBotSpawnState(bot: WebSocket, lobby: Lobby): void {
     };
     bot.lastPosAt = Date.now();
     clearBotPath(bot);
+}
+
+function pointInsideAnyForest(lobby: Lobby, x: number, y: number): boolean {
+    const forests = lobby.mapData?.forests || [];
+    return forests.some((f) => x >= f.x && x <= f.x + FOREST_SECTION_SIZE && y >= f.y && y <= f.y + FOREST_SECTION_SIZE);
+}
+
+function lineCrossesForest(lobby: Lobby, x1: number, y1: number, x2: number, y2: number): boolean {
+    const forests = lobby.mapData?.forests || [];
+    if (forests.length === 0) return false;
+    const dist = Math.hypot(x2 - x1, y2 - y1);
+    const steps = Math.max(1, Math.ceil(dist / 40));
+    for (let i = 1; i < steps; i++) {
+        const t = i / steps;
+        const px = x1 + (x2 - x1) * t;
+        const py = y1 + (y2 - y1) * t;
+        for (const f of forests) {
+            if (px >= f.x && px <= f.x + FOREST_SECTION_SIZE && py >= f.y && py <= f.y + FOREST_SECTION_SIZE) return true;
+        }
+    }
+    return false;
+}
+
+function pointInsideAnySmoke(lobby: Lobby, x: number, y: number, now: number): boolean {
+    if (!lobby.smokes) return false;
+    for (const s of lobby.smokes) {
+        if (s.expiresAt <= now) continue;
+        if (Math.hypot(x - s.x, y - s.y) < SMOKE_CLOUD_RADIUS) return true;
+    }
+    return false;
+}
+
+function lineCrossesSmoke(lobby: Lobby, x1: number, y1: number, x2: number, y2: number, now: number): boolean {
+    if (!lobby.smokes || lobby.smokes.length === 0) return false;
+    const dist = Math.hypot(x2 - x1, y2 - y1);
+    const steps = Math.max(1, Math.ceil(dist / 40));
+    for (let i = 1; i < steps; i++) {
+        const t = i / steps;
+        const px = x1 + (x2 - x1) * t;
+        const py = y1 + (y2 - y1) * t;
+        for (const s of lobby.smokes) {
+            if (s.expiresAt <= now) continue;
+            if (Math.hypot(px - s.x, py - s.y) < SMOKE_CLOUD_RADIUS) return true;
+        }
+    }
+    return false;
+}
+
+/** Может ли бот видеть цель с учётом леса и дыма. */
+function botCanSeeTarget(lobby: Lobby, botX: number, botY: number, targetX: number, targetY: number, dist: number): boolean {
+    const now = Date.now();
+    const forestBetween = lineCrossesForest(lobby, botX, botY, targetX, targetY);
+    const botInForest = pointInsideAnyForest(lobby, botX, botY);
+    const targetInForest = pointInsideAnyForest(lobby, targetX, targetY);
+    const smokeBetween = lineCrossesSmoke(lobby, botX, botY, targetX, targetY, now);
+    const botInSmoke = pointInsideAnySmoke(lobby, botX, botY, now);
+    const targetInSmoke = pointInsideAnySmoke(lobby, targetX, targetY, now);
+    if (forestBetween || botInForest || targetInForest || smokeBetween || botInSmoke || targetInSmoke) {
+        return dist <= DETECTION_RADIUS_SMALL;
+    }
+    return true;
 }
 
 function lineBlocked(lobby: Lobby, x1: number, y1: number, x2: number, y2: number): boolean {
@@ -339,15 +400,14 @@ function findTarget(lobby: Lobby, bot: WebSocket): WebSocket | null {
         const x = player.lastPos?.x ?? player.x;
         const y = player.lastPos?.y ?? player.y;
         const dist = Math.hypot(x - bot.x, y - bot.y);
+        if (dist > BOT_VIEW_DISTANCE) return;
+        if (!botCanSeeTarget(lobby, bot.x, bot.y, x, y, dist)) return;
         if (dist < bestDist) {
             best = player;
             bestDist = dist;
         }
     });
-    if (best && bestDist <= BOT_VIEW_DISTANCE) {
-        return best;
-    }
-    return null;
+    return best;
 }
 
 function aimAndMove(bot: WebSocket, target: WebSocket | null, dtSec: number, lobby: Lobby): void {
@@ -368,7 +428,8 @@ function maybeShoot(lobby: Lobby, bot: WebSocket, target: WebSocket | null): voi
     const difficulty = bot.botDifficulty ?? 1;
     const distance = Math.hypot(target.lastPos.x - bot.x, target.lastPos.y - bot.y);
     const aimError = normalizeAngle(Math.atan2(target.lastPos.y - bot.y, target.lastPos.x - bot.x) - bot.turretAngle);
-    const canSee = !lineBlocked(lobby, bot.x, bot.y, target.lastPos.x, target.lastPos.y);
+    const canSee = !lineBlocked(lobby, bot.x, bot.y, target.lastPos.x, target.lastPos.y)
+        && botCanSeeTarget(lobby, bot.x, bot.y, target.lastPos.x, target.lastPos.y, distance);
     const shotCooldown = Math.max(400, BOT_SHOT_COOLDOWN_MS - difficulty * 120);
     if (distance > BOT_FIRE_DISTANCE || Math.abs(aimError) > BOT_AIM_THRESHOLD || !canSee) return;
     if (now - brain.lastShotAt < shotCooldown) return;

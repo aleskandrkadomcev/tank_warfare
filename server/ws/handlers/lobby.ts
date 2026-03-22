@@ -9,6 +9,7 @@ import { broadcastLobbyList, broadcastLobbyState } from '../broadcast.js';
 import { lobbies } from '../lobbyStore.js';
 
 export function handleCreateLobby(wss: WebSocketServer, ws: WebSocket, data: Record<string, unknown>): void {
+    console.log('[DEBUG] handleCreateLobby data.mapSize =', data.mapSize);
     const lobbyId = Math.floor(Math.random() * 9000 + 1000).toString();
     ws.nickname = sanitizeNick(data.nickname);
     ws.id = `p_${Math.floor(Math.random() * 10000)}`;
@@ -31,6 +32,7 @@ export function handleCreateLobby(wss: WebSocketServer, ws: WebSocket, data: Rec
         aiTickHandle: null,
         detectionVisibleUntil: {},
         smokes: [],
+        mapSize: typeof data.mapSize === 'string' ? data.mapSize : 'small',
     };
     ws.send(
         JSON.stringify({
@@ -90,7 +92,7 @@ export function handleChangeTeam(_wss: WebSocketServer, ws: WebSocket, data: Rec
     const team = typeof data.team === 'number' ? data.team : 0;
     if (lobby && !lobby.gameStarted) {
         const teamCount = lobby.players.filter((p) => p.team === team).length;
-        if (teamCount < 3) {
+        if (teamCount < 5) {
             ws.team = team;
             broadcastLobbyState(lobby);
         }
@@ -105,11 +107,14 @@ export function handleToggleReady(_wss: WebSocketServer, ws: WebSocket, _data: R
     }
 }
 
-export function handleStartGame(_wss: WebSocketServer, ws: WebSocket, _data: Record<string, unknown>): void {
+export function handleStartGame(_wss: WebSocketServer, ws: WebSocket, data: Record<string, unknown>): void {
     const lobby = ws.lobbyId ? lobbies[ws.lobbyId] : undefined;
     if (lobby && ws.id === lobby.hostId && !lobby.gameStarted && lobby.players.length >= 1) {
         lobby.gameStarted = true;
-        lobby.mapData = generateMapData();
+        const mapSize = typeof data.mapSize === 'string' ? data.mapSize : (lobby.mapSize || 'small');
+        console.log('[DEBUG] handleStartGame mapSize =', mapSize);
+        lobby.mapData = generateMapData(mapSize);
+        console.log('[DEBUG] generated map w =', lobby.mapData?.w, 'h =', lobby.mapData?.h);
         lobby.aiGrid = buildBotPathGrid(lobby.mapData);
         initBotsForStart(lobby);
         lobby.players.forEach((p) => {
@@ -149,6 +154,7 @@ export function handleAddBot(wss: WebSocketServer, ws: WebSocket, data: Record<s
         ws.send(JSON.stringify({ type: ServerMsg.ERROR, msg: 'Game already started' }));
         return;
     }
+    console.log('[DEBUG] handleAddBot players.length =', lobby.players.length, 'MAX_PLAYERS =', MAX_PLAYERS);
     if (lobby.players.length >= MAX_PLAYERS) {
         ws.send(JSON.stringify({ type: ServerMsg.ERROR, msg: 'Lobby full' }));
         return;

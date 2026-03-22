@@ -2,10 +2,15 @@
  * Фон карты (без серой разметки), кирпичи, лес и бусты на земле.
  */
 import { BOOST_ICON_SCALE, BRICK_SIZE } from '../config/constants.js';
+import { assets } from '../lib/assets.js';
 
 let bricksCanvas = null;
 let bricksCtx = null;
 let bricksCacheKey = '';
+
+let brickShadowCanvas = null;
+let brickShadowCtx = null;
+let brickShadowCacheKey = '';
 
 /** Кэш «земля + сетка» целиком — не перерисовывать 2× fillRect паттерном на 3200×1800 каждый кадр. */
 let landCanvas = null;
@@ -100,25 +105,74 @@ function ensureBricksCanvas(w, h) {
  * @param {number} mapHeight
  * @param {number} bricksDrawRevision — `world.bricksDrawRevision`, инкремент при мутации массива
  */
-export function drawBricks(ctx, bricks, biome, mapWidth, mapHeight, bricksDrawRevision) {
-    const key = `${bricksDrawRevision}|${biome}|${mapWidth}|${mapHeight}|${bricks.length}`;
+export function drawBricks(ctx, bricks, mapWidth, mapHeight, bricksDrawRevision) {
+    const key = `${bricksDrawRevision}|${mapWidth}|${mapHeight}|${bricks.length}`;
     if (key !== bricksCacheKey || bricksCanvas?.width !== mapWidth || bricksCanvas?.height !== mapHeight) {
         bricksCacheKey = key;
         ensureBricksCanvas(mapWidth, mapHeight);
         bricksCtx.clearRect(0, 0, mapWidth, mapHeight);
-        const fillStyle = biome === 1 ? '#aaa' : '#8b4513';
-        bricksCtx.fillStyle = fillStyle;
+        const brickImg = assets.images.brick;
+        const brickImgOk = brickImg?.complete && brickImg.naturalWidth > 0;
         for (const b of bricks) {
-            bricksCtx.fillRect(b.x, b.y, BRICK_SIZE - 1, BRICK_SIZE - 1);
+            if (brickImgOk) {
+                bricksCtx.drawImage(brickImg, b.x, b.y);
+            } else {
+                bricksCtx.fillStyle = '#8b4513';
+                bricksCtx.fillRect(b.x, b.y, BRICK_SIZE - 1, BRICK_SIZE - 1);
+            }
         }
     }
     ctx.drawImage(bricksCanvas, 0, 0);
+}
+
+function ensureBrickShadowCanvas(w, h) {
+    if (!brickShadowCanvas) {
+        brickShadowCanvas = document.createElement('canvas');
+        brickShadowCtx = brickShadowCanvas.getContext('2d');
+    }
+    if (brickShadowCanvas.width !== w || brickShadowCanvas.height !== h) {
+        brickShadowCanvas.width = w;
+        brickShadowCanvas.height = h;
+    }
+}
+
+/** Тени кирпичей — отдельный слой, рисуется ВЫШЕ танков. */
+export function drawBrickShadows(ctx, bricks, mapWidth, mapHeight, bricksDrawRevision) {
+    const key = `${bricksDrawRevision}|${mapWidth}|${mapHeight}|${bricks.length}`;
+    if (key !== brickShadowCacheKey || brickShadowCanvas?.width !== mapWidth || brickShadowCanvas?.height !== mapHeight) {
+        brickShadowCacheKey = key;
+        ensureBrickShadowCanvas(mapWidth, mapHeight);
+        brickShadowCtx.clearRect(0, 0, mapWidth, mapHeight);
+        const shadowImg = assets.images.shadowBrick;
+        const shadowOk = shadowImg?.complete && shadowImg.naturalWidth > 0;
+        for (const b of bricks) {
+            if (shadowOk) {
+                brickShadowCtx.drawImage(shadowImg, b.x, b.y);
+            } else {
+                brickShadowCtx.fillStyle = 'rgba(0,0,0,0.18)';
+                brickShadowCtx.fillRect(b.x + 20, b.y + 20, BRICK_SIZE - 1, BRICK_SIZE - 1);
+            }
+        }
+    }
+    ctx.drawImage(brickShadowCanvas, 0, 0);
 }
 
 /**
  * Отрисовка леса как оверлей-текстуры секций (каждая секция: 97px, шаг 89px задаётся генератором).
  * Лес рисуется поверх карты/танков и ниже дыма абилки.
  */
+/**
+ * Тени леса — рисуются ПОД лесом, НАД танками/кирпичами.
+ */
+export function drawForestShadows(ctx, forests, shadowForestImg) {
+    if (!Array.isArray(forests) || forests.length === 0) return;
+    const imageOk = shadowForestImg?.complete && shadowForestImg.naturalWidth > 0;
+    if (!imageOk) return;
+    for (const f of forests) {
+        ctx.drawImage(shadowForestImg, f.x, f.y);
+    }
+}
+
 export function drawForests(ctx, forests, forestImg) {
     if (!Array.isArray(forests) || forests.length === 0) return;
     const imageOk = forestImg?.complete && forestImg.naturalWidth > 0;

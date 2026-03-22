@@ -8,6 +8,31 @@ import { assets } from '../lib/assets.js';
  * @param {CanvasRenderingContext2D} ctx
  * @param {object} t — танк с x,y,angle,turretAngle,w,h,color,...
  */
+export function drawTankShadow(ctx, t) {
+    ctx.save();
+    ctx.translate(t.x + 5, t.y + 5);
+    ctx.rotate(t.angle);
+    ctx.globalAlpha = 0.35;
+    ctx.filter = 'blur(3px)';
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    const hw = 75 / 2;
+    const hh = 45 / 2;
+    const r = 4;
+    ctx.moveTo(-hw + r, -hh);
+    ctx.lineTo(hw - r, -hh);
+    ctx.quadraticCurveTo(hw, -hh, hw, -hh + r);
+    ctx.lineTo(hw, hh - r);
+    ctx.quadraticCurveTo(hw, hh, hw - r, hh);
+    ctx.lineTo(-hw + r, hh);
+    ctx.quadraticCurveTo(-hw, hh, -hw, hh - r);
+    ctx.lineTo(-hw, -hh + r);
+    ctx.quadraticCurveTo(-hw, -hh, -hw + r, -hh);
+    ctx.fill();
+    ctx.filter = 'none';
+    ctx.restore();
+}
+
 export function drawTank(ctx, t) {
     ctx.save();
     ctx.translate(t.x, t.y);
@@ -53,7 +78,8 @@ export function drawTank(ctx, t) {
     if (t.hp < TANK_MAX_HP && t.hp > 0) {
         ctx.fillStyle = '#333';
         ctx.fillRect(t.x - 20, t.y - 30, 40, 5);
-        ctx.fillStyle = t.color;
+        const isAlly = t._isAlly !== undefined ? t._isAlly : true;
+        ctx.fillStyle = isAlly ? '#4CAF50' : '#f44336';
         ctx.fillRect(t.x - 20, t.y - 30, (t.hp / TANK_MAX_HP) * 40, 5);
     }
 }

@@ -3,7 +3,7 @@
  */
 import { MAX_TRACKS_IN_WORLD } from '../config/constants.js';
 import { playSound_Explosion } from '../lib/audio.js';
-import { world } from './gameState.js';
+import { battle, world } from './gameState.js';
 
 const { particles, tracks, smokes, explosions } = world;
 
@@ -83,5 +83,7 @@ export function createSmokeCloud(x, y) {
 export function createExplosion(x, y, radius) {
     explosions.push({ x, y, radius, time: 0, maxTime: 0.3 });
     spawnParticles(x, y, '#333', 30, 'dark_smoke');
-    playSound_Explosion();
+    const dist = Math.hypot(battle.tank.x - x, battle.tank.y - y);
+    const vol = Math.max(0, 1 - dist / 1200);
+    playSound_Explosion(vol);
 }

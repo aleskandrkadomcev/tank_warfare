@@ -32,7 +32,7 @@ export function drawTracks(ctx, tracks, now, viewWorld) {
         ctx.translate(t.x, t.y);
         ctx.rotate(t.angle);
         ctx.fillStyle = `rgba(30,25,20,${alpha * 0.3})`;
-        ctx.fillRect(-4, -1.5, 8, 3);
+        ctx.fillRect(-8, -3, 16, 6);
     }
     ctx.setTransform(baseTransform);
 }

@@ -66,6 +66,7 @@ export type Lobby = {
     gameStarted: boolean;
     mapData: MapData | null;
     aiTickHandle: ReturnType<typeof setInterval> | null;
+    mapSize?: string;
     /** Активные облака дыма (серверная копия для обнаружения). */
     smokes: LobbySmokeCloud[];
     /**
