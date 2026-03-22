@@ -7,6 +7,7 @@ import { ClientMsg, ServerMsg } from './protocol.js';
 // --- примитивы контракта ---
 
 export type BrickPos = { x: number; y: number };
+export type ForestPos = { x: number; y: number };
 
 export type LobbyListRow = {
     id?: string;
@@ -28,7 +29,7 @@ export type LobbyPlayerRow = {
 
 export type PlayerSummary = { id: string; nick: string; team: number; color: string; isBot?: boolean };
 
-export type MapPayload = { bricks: BrickPos[]; biome: number; w: number; h: number };
+export type MapPayload = { bricks: BrickPos[]; forests: ForestPos[]; biome: number; w: number; h: number };
 
 export type BoostEntity = { x: number; y: number; type: number; id: string };
 

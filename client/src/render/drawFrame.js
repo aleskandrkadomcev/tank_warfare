@@ -21,6 +21,7 @@ import { beginNicknameDrawPass, drawAimCrosshair, drawNickname, endNicknameDrawP
 import {
     drawBoostIcon,
     drawBricks,
+    drawForests,
     drawMapBackground,
 } from './world.js';
 
@@ -39,6 +40,7 @@ export function drawGameFrame(ctx, view) {
         session,
         level,
         bricks,
+        forests,
         boosts,
         tracks,
         particles,
@@ -136,6 +138,8 @@ export function drawGameFrame(ctx, view) {
     drawExplosions(ctx, explosions);
 
     drawRockets(ctx, rockets, onRocketSmoke, now);
+
+    drawForests(ctx, forests, assets.images.forest);
 
     if (tank.hp > 0) {
         drawAimCrosshair(ctx, tank);

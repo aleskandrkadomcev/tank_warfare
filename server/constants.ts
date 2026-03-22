@@ -19,3 +19,7 @@ export const DETECTION_RADIUS_SMALL = DETECTION_RADIUS * FOREST_DETECTION_RADIUS
 export const SMOKE_CLOUD_RADIUS = 200;
 /** Время жизни облака дыма (синхронно с клиентом simulation.js: 10 с). */
 export const SMOKE_LIFETIME_MS = 10_000;
+/** Размер спрайта секции леса (PNG). */
+export const FOREST_SECTION_SIZE = 97;
+/** Шаг повторения секций леса (перекрытие 8px). */
+export const FOREST_SECTION_STEP = 89;

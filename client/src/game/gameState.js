@@ -7,6 +7,7 @@ import { MAP_HEIGHT, MAP_WIDTH, TANK_MAX_HP } from '../config/constants.js';
 /** Сущности на карте и эффекты (2.2a). */
 export const world = {
     bricks: [],
+    forests: [],
     /** Счётчик для инвалидации offscreen-кэша кирпичей в `drawBricks`. */
     bricksDrawRevision: 0,
     bullets: [],

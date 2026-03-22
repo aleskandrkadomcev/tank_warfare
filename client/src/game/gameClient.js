@@ -22,6 +22,7 @@ import { runSimulation } from './simulation.js';
 
 const {
     bricks,
+    forests,
     bullets,
     particles,
     tracks,
@@ -377,6 +378,7 @@ function loop(ts) {
         session,
         level,
         bricks,
+        forests,
         boosts,
         tracks,
         particles,

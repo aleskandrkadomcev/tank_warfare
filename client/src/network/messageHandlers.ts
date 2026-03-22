@@ -127,9 +127,17 @@ function handleStart(d: Record<string, unknown>) {
         session.playerData[p.id] = { nick: p.nick, team: p.team, color: p.color, isBot: Boolean(p.isBot) };
     });
     if (d.map) {
-        const map = d.map as { bricks: { x: number; y: number }[]; biome: number; w: number; h: number };
+        const map = d.map as {
+            bricks: { x: number; y: number }[];
+            forests?: { x: number; y: number }[];
+            biome: number;
+            w: number;
+            h: number;
+        };
         world.bricks.length = 0;
         map.bricks.forEach((b) => world.bricks.push(b));
+        world.forests.length = 0;
+        (map.forests || []).forEach((f) => world.forests.push(f));
         level.biome = map.biome;
         level.mapWidth = map.w;
         level.mapHeight = map.h;
@@ -349,9 +357,11 @@ function handleBricksDestroyBatch(d: Record<string, unknown>) {
 
 function handleRestartMatch(d: Record<string, unknown>) {
     if (d.map) {
-        const map = d.map as { bricks: { x: number; y: number }[]; biome: number };
+        const map = d.map as { bricks: { x: number; y: number }[]; forests?: { x: number; y: number }[]; biome: number };
         world.bricks.length = 0;
         map.bricks.forEach((b) => world.bricks.push(b));
+        world.forests.length = 0;
+        (map.forests || []).forEach((f) => world.forests.push(f));
         level.biome = map.biome;
         bumpBricksDrawRevision();
     }

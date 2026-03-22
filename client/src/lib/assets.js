@@ -1,6 +1,7 @@
 import grassBaseUrl from '../game-assets/images/grass_base.png?url';
 import grassOverlayUrl from '../game-assets/images/grass_overlay.png?url';
 import perlinMaskUrl from '../game-assets/images/perlin_mask.png?url';
+import forestUrl from '../game-assets/images/forest.png?url';
 import tankBaseUrl from '../game-assets/images/tank_base_green.png?url';
 import tankTurretUrl from '../game-assets/images/tank_turret_green.png?url';
 import brickHitUrl from '../game-assets/sounds/brick_hit.mp3?url';
@@ -8,7 +9,7 @@ import explosionUrl from '../game-assets/sounds/explosion.mp3?url';
 import hitUrl from '../game-assets/sounds/hit.mp3?url';
 import shootUrl from '../game-assets/sounds/shoot.mp3?url';
 
-const totalAssets = 9;
+const totalAssets = 10;
 let assetsLoadedCount = 0;
 
 function checkAssetsLoaded(assets) {
@@ -25,6 +26,7 @@ function createAssets() {
       grassBase: new Image(),
       grassOverlay: new Image(),
       perlinMask: new Image(),
+      forest: new Image(),
       tankBase: new Image(),
       tankTurret: new Image(),
     },
@@ -41,6 +43,7 @@ function createAssets() {
   assets.images.grassBase.src = grassBaseUrl;
   assets.images.grassOverlay.src = grassOverlayUrl;
   assets.images.perlinMask.src = perlinMaskUrl;
+  assets.images.forest.src = forestUrl;
   assets.images.tankBase.src = tankBaseUrl;
   assets.images.tankTurret.src = tankTurretUrl;
   assets.sounds.shoot.src = shootUrl;

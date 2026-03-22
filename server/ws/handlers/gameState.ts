@@ -5,6 +5,7 @@ import {
     DETECTION_MEMORY_MS,
     DETECTION_RADIUS,
     DETECTION_RADIUS_SMALL,
+    FOREST_SECTION_SIZE,
     MAX_SCORE,
     SMOKE_CLOUD_RADIUS,
     SPAWN_IMMUNITY_TIME,
@@ -26,6 +27,11 @@ function pointInsideAnySmoke(lobby: (typeof lobbies)[string], x: number, y: numb
     return false;
 }
 
+function pointInsideAnyForest(lobby: (typeof lobbies)[string], x: number, y: number): boolean {
+    const forests = lobby.mapData?.forests || [];
+    return forests.some((f) => x >= f.x && x <= f.x + FOREST_SECTION_SIZE && y >= f.y && y <= f.y + FOREST_SECTION_SIZE);
+}
+
 /** Сегмент обзора пересекает диск облака дыма (игроки могут быть снаружи, дым между ними). */
 function lineCrossesSmokeCloud(lobby: (typeof lobbies)[string], x1: number, y1: number, x2: number, y2: number, now: number): boolean {
     const dist = Math.hypot(x2 - x1, y2 - y1);
@@ -37,6 +43,22 @@ function lineCrossesSmokeCloud(lobby: (typeof lobbies)[string], x1: number, y1: 
         for (const s of lobby.smokes) {
             if (s.expiresAt <= now) continue;
             if (Math.hypot(px - s.x, py - s.y) < SMOKE_CLOUD_RADIUS) return true;
+        }
+    }
+    return false;
+}
+
+function lineCrossesForest(lobby: (typeof lobbies)[string], x1: number, y1: number, x2: number, y2: number): boolean {
+    const forests = lobby.mapData?.forests || [];
+    if (forests.length === 0) return false;
+    const dist = Math.hypot(x2 - x1, y2 - y1);
+    const steps = Math.max(1, Math.ceil(dist / 40));
+    for (let i = 1; i < steps; i++) {
+        const t = i / steps;
+        const px = x1 + (x2 - x1) * t;
+        const py = y1 + (y2 - y1) * t;
+        for (const f of forests) {
+            if (px >= f.x && px <= f.x + FOREST_SECTION_SIZE && py >= f.y && py <= f.y + FOREST_SECTION_SIZE) return true;
         }
     }
     return false;
@@ -73,7 +95,10 @@ function canObserverDetectTarget(lobby: (typeof lobbies)[string], observer: WebS
     const smokeBetween = lineCrossesSmokeCloud(lobby, ox, oy, tx, ty, now);
     const observerInSmoke = pointInsideAnySmoke(lobby, ox, oy, now);
     const targetInSmoke = pointInsideAnySmoke(lobby, tx, ty, now);
-    if (smokeBetween || observerInSmoke || targetInSmoke) {
+    const forestBetween = lineCrossesForest(lobby, ox, oy, tx, ty);
+    const observerInForest = pointInsideAnyForest(lobby, ox, oy);
+    const targetInForest = pointInsideAnyForest(lobby, tx, ty);
+    if (smokeBetween || observerInSmoke || targetInSmoke || forestBetween || observerInForest || targetInForest) {
         if (dist > DETECTION_RADIUS_SMALL) return false;
     }
     return true;

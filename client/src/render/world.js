@@ -1,11 +1,7 @@
 /**
- * Фон карты, сетка (кэш offscreen — фаза 3.4), кирпичи, бусты на земле.
+ * Фон карты (без серой разметки), кирпичи, лес и бусты на земле.
  */
 import { BOOST_ICON_SCALE, BRICK_SIZE } from '../config/constants.js';
-
-let gridCanvas = null;
-let gridCtx = null;
-let gridKey = '';
 
 let bricksCanvas = null;
 let bricksCtx = null;
@@ -15,40 +11,6 @@ let bricksCacheKey = '';
 let landCanvas = null;
 let landCtx = null;
 let landCacheKey = '';
-
-function ensureGridCanvas(w, h) {
-    if (!gridCanvas) {
-        gridCanvas = document.createElement('canvas');
-        gridCtx = gridCanvas.getContext('2d');
-    }
-    if (gridCanvas.width !== w || gridCanvas.height !== h) {
-        gridCanvas.width = w;
-        gridCanvas.height = h;
-    }
-}
-
-/** Перерисовка сетки только при смене размера карты или биома. */
-function drawGridToCache(mapWidth, mapHeight, biome) {
-    const key = `${mapWidth}|${mapHeight}|${biome}`;
-    if (key === gridKey && gridCanvas?.width === mapWidth) return;
-    gridKey = key;
-    ensureGridCanvas(mapWidth, mapHeight);
-    gridCtx.strokeStyle = ['#777', '#ccc', '#c1a275'][biome];
-    gridCtx.lineWidth = 1;
-    gridCtx.clearRect(0, 0, mapWidth, mapHeight);
-    for (let i = 0; i < mapWidth; i += 100) {
-        gridCtx.beginPath();
-        gridCtx.moveTo(i, 0);
-        gridCtx.lineTo(i, mapHeight);
-        gridCtx.stroke();
-    }
-    for (let i = 0; i < mapHeight; i += 100) {
-        gridCtx.beginPath();
-        gridCtx.moveTo(0, i);
-        gridCtx.lineTo(mapWidth, i);
-        gridCtx.stroke();
-    }
-}
 
 function ensureLandCanvas(w, h) {
     if (!landCanvas) {
@@ -69,7 +31,6 @@ function rebuildLandCache(mapWidth, mapHeight, biome, cachedPatterns, grassImg, 
         cachedPatterns.grassBase = null;
         cachedPatterns.perlinMask = null;
     }
-    drawGridToCache(mapWidth, mapHeight, biome);
     ensureLandCanvas(mapWidth, mapHeight);
 
     let grassPat = null;
@@ -104,7 +65,6 @@ function rebuildLandCache(mapWidth, mapHeight, biome, cachedPatterns, grassImg, 
     }
     landCtx.globalAlpha = 1;
     landCtx.globalCompositeOperation = 'source-over';
-    landCtx.drawImage(gridCanvas, 0, 0);
 }
 
 /**
@@ -153,6 +113,24 @@ export function drawBricks(ctx, bricks, biome, mapWidth, mapHeight, bricksDrawRe
         }
     }
     ctx.drawImage(bricksCanvas, 0, 0);
+}
+
+/**
+ * Отрисовка леса как оверлей-текстуры секций (каждая секция: 97px, шаг 89px задаётся генератором).
+ * Лес рисуется поверх карты/танков и ниже дыма абилки.
+ */
+export function drawForests(ctx, forests, forestImg) {
+    if (!Array.isArray(forests) || forests.length === 0) return;
+    const imageOk = forestImg?.complete && forestImg.naturalWidth > 0;
+    for (const f of forests) {
+        if (imageOk) {
+            ctx.drawImage(forestImg, f.x, f.y);
+            continue;
+        }
+        // Fallback: полупрозрачный патч леса до загрузки спрайта.
+        ctx.fillStyle = 'rgba(36, 92, 42, 0.45)';
+        ctx.fillRect(f.x, f.y, 97, 97);
+    }
 }
 
 export function drawBoostIcon(ctx, x, y, type) {

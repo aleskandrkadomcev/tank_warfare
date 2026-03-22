@@ -5,6 +5,11 @@ export interface WorldBrick {
     y: number;
 }
 
+export interface WorldForest {
+    x: number;
+    y: number;
+}
+
 export interface WorldBullet {
     bulletId: string;
     x: number;
@@ -85,6 +90,7 @@ export function bumpBricksDrawRevision(): void;
 
 export const world: {
     bricks: WorldBrick[];
+    forests: WorldForest[];
     bricksDrawRevision: number;
     bullets: WorldBullet[];
     particles: unknown[];
