@@ -226,18 +226,24 @@ export function runSimulation(dt, ctx) {
     if (session.enemyEngine) session.enemyEngine.update(dt, enemySpeed / MAX_SPEED_FORWARD, distFactor);
 
     if (tank.hp > 0) {
-        if (tank.hp <= 33) {
-            if (Math.random() > 0.7) spawnParticles(tank.x, tank.y, '#555', 1, 'fire_smoke');
-            if (Math.random() > 0.8) spawnParticles(tank.x, tank.y, '#ffaa00', 1, 'spark_fire');
-        } else if (tank.hp <= 66 && Math.random() > 0.85) spawnParticles(tank.x, tank.y, '#888', 1, 'smoke');
+        if (tank.hp <= 35) {
+            // Чёрный дым (≤35% HP), шанс 15%
+            if (Math.random() < 0.15) spawnParticles(tank.x, tank.y, '#555', 1, 'fire_smoke');
+            if (Math.random() > 0.93) spawnParticles(tank.x, tank.y, '#ffdd00', 1, 'spark_fire');
+        } else if (tank.hp <= 66 && Math.random() > 0.96) {
+            // Серый дым (35-66% HP)
+            spawnParticles(tank.x, tank.y, '#888', 1, 'smoke');
+        }
     }
     for (const id in enemyTanks) {
         const et = enemyTanks[id];
         if (et.hp > 0) {
-            if (et.hp <= 33) {
-                if (Math.random() > 0.7) spawnParticles(et.x, et.y, '#555', 1, 'fire_smoke');
-                if (Math.random() > 0.8) spawnParticles(et.x, et.y, '#ffaa00', 1, 'spark_fire');
-            } else if (et.hp <= 66 && Math.random() > 0.85) spawnParticles(et.x, et.y, '#888', 1, 'smoke');
+            if (et.hp <= 35) {
+                if (Math.random() < 0.15) spawnParticles(et.x, et.y, '#555', 1, 'fire_smoke');
+                if (Math.random() > 0.93) spawnParticles(et.x, et.y, '#ffdd00', 1, 'spark_fire');
+            } else if (et.hp <= 66 && Math.random() > 0.96) {
+                spawnParticles(et.x, et.y, '#888', 1, 'smoke');
+            }
         }
     }
 
@@ -256,8 +262,22 @@ export function runSimulation(dt, ctx) {
             tank.angle,
         );
         level.trackSpawnDist = 0;
-        if (Math.random() > 0.5) {
-            spawnParticles(tank.x - Math.cos(tank.angle) * 18, tank.y - Math.sin(tank.angle) * 18, '#4a3c2b', 1, 'dirt');
+        // Грязь из-под обеих гусениц сзади танка
+        const bx = -Math.cos(tank.angle) * 22;
+        const by = -Math.sin(tank.angle) * 22;
+        if (Math.random() > 0.6) {
+            spawnParticles(
+                tank.x - Math.cos(tank.angle + Math.PI / 2) * off + bx,
+                tank.y - Math.sin(tank.angle + Math.PI / 2) * off + by,
+                '#2e2418', 1, 'dirt',
+            );
+        }
+        if (Math.random() > 0.6) {
+            spawnParticles(
+                tank.x - Math.cos(tank.angle - Math.PI / 2) * off + bx,
+                tank.y - Math.sin(tank.angle - Math.PI / 2) * off + by,
+                '#2e2418', 1, 'dirt',
+            );
         }
     }
 
@@ -292,8 +312,8 @@ export function runSimulation(dt, ctx) {
         const sp = (Math.random() - 0.5) * sr * 5 * (Math.PI / 180) * 2;
         const a = tank.turretAngle + sp;
         const b = {
-            x: tank.x + Math.cos(a) * 30,
-            y: tank.y + Math.sin(a) * 30,
+            x: tank.x + Math.cos(a) * 50,
+            y: tank.y + Math.sin(a) * 50,
             vx: Math.cos(a) * 1200,
             vy: Math.sin(a) * 1200,
             ownerId: session.myId,
@@ -306,7 +326,21 @@ export function runSimulation(dt, ctx) {
         tank.reload = reloadTime;
         playSound_Shot(1);
         triggerShake('shot');
-        spawnParticles(b.x, b.y, '#fff', 3, 'muzzle');
+        spawnParticles(b.x, b.y, '#fff', 2, 'muzzle');
+        spawnParticles(b.x, b.y, '#ffaa00', 3, 'muzzle');
+        // Пороховые газы — короткий фаербол по направлению выстрела
+        for (let fi = 0; fi < 3; fi++) {
+            const fSpd = 30 + Math.random() * 50;
+            particles.push({
+                x: b.x, y: b.y,
+                vx: Math.cos(a) * fSpd + (Math.random() - 0.5) * 40,
+                vy: Math.sin(a) * fSpd + (Math.random() - 0.5) * 40,
+                life: 0.08 + Math.random() * 0.1,
+                color: `rgba(255,${130 + Math.floor(Math.random() * 80)},0,0.85)`,
+                size: Math.random() * 5 + 3,
+                type: 'muzzle',
+            });
+        }
         send({
             type: ClientMsg.BULLET,
             bulletId: b.bulletId,

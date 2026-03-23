@@ -2,6 +2,7 @@
  * Следы, частицы, мины, снаряды, дым, взрывы, ракеты (фаза 3.3).
  */
 import { BULLET_DAMAGE_BASE, TRACK_LIFETIME } from '../config/constants.js';
+import { assets } from '../lib/assets.js';
 
 /** Не рисуем частицы/дым с пренебрежимой непрозрачностью — экономия beginPath/arc/fill. */
 const PARTICLE_VIS_EPS = 0.002;
@@ -37,9 +38,39 @@ export function drawTracks(ctx, tracks, now, viewWorld) {
     ctx.setTransform(baseTransform);
 }
 
+export function drawMuzzleFlash(ctx, particles) {
+    for (const p of particles) {
+        if (p.type !== 'muzzle') continue;
+        const life = Math.max(0, p.life);
+        if (life < PARTICLE_VIS_EPS) continue;
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = life;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+}
+
+export function drawParticlesDirt(ctx, particles) {
+    for (const p of particles) {
+        if (p.type !== 'dirt') continue;
+        const life = Math.max(0, p.life);
+        if (life < PARTICLE_VIS_EPS) continue;
+        ctx.fillStyle = p.color;
+        // 70% жизни — полностью непрозрачный, потом затухает
+        const fadeStart = 0.3;
+        ctx.globalAlpha = life > fadeStart ? 0.75 : (life / fadeStart) * 0.75;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+}
+
 export function drawParticlesSparks(ctx, particles) {
     for (const p of particles) {
-        if (p.type !== 'smoke' && p.type !== 'fire_smoke' && p.type !== 'dark_smoke') {
+        if (p.type !== 'smoke' && p.type !== 'fire_smoke' && p.type !== 'dark_smoke' && p.type !== 'dirt' && p.type !== 'muzzle') {
             const life = Math.max(0, p.life);
             if (life < PARTICLE_VIS_EPS) continue;
             ctx.fillStyle = p.color;
@@ -87,42 +118,76 @@ export function drawBullets(ctx, bullets) {
 }
 
 export function drawParticlesSmoke(ctx, particles) {
+    const greyImg = assets.images.smokeGrey;
+    const blackImg = assets.images.smokeBlack;
+    const useGrey = greyImg && greyImg.complete && greyImg.naturalWidth > 0;
+    const useBlack = blackImg && blackImg.complete && blackImg.naturalWidth > 0;
     for (const p of particles) {
         if (p.type === 'smoke' || p.type === 'fire_smoke') {
             const life = Math.max(0, p.life);
             if (life < PARTICLE_VIS_EPS) continue;
-            ctx.fillStyle = p.color;
             ctx.globalAlpha = life;
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-            ctx.fill();
+            const img = p.type === 'fire_smoke' ? (useBlack ? blackImg : null) : (useGrey ? greyImg : null);
+            if (img) {
+                const scale = p.spriteScale || 1;
+                const w = img.naturalWidth * scale;
+                const h = img.naturalHeight * scale;
+                ctx.drawImage(img, p.x - w / 2, p.y - h / 2, w, h);
+            } else {
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
         }
     }
 }
 
 export function drawSmokes(ctx, smokes) {
+    const smokeImg = assets.images.smoke;
+    const useSprite = smokeImg && smokeImg.complete && smokeImg.naturalWidth > 0;
     for (const s of smokes) {
         s.particles.forEach((p) => {
             const a = p.alpha;
             if (a < PARTICLE_VIS_EPS) return;
-            ctx.fillStyle = `rgba(200,200,200,${a})`;
-            ctx.beginPath();
-            ctx.arc(s.x + p.ox, s.y + p.oy, p.size, 0, Math.PI * 2);
-            ctx.fill();
+            ctx.globalAlpha = a;
+            if (useSprite) {
+                const scale = p.spriteScale || 1;
+                const w = smokeImg.naturalWidth * scale;
+                const h = smokeImg.naturalHeight * scale;
+                const px = s.x + p.ox;
+                const py = s.y + p.oy;
+                ctx.drawImage(smokeImg, px - w / 2, py - h / 2, w, h);
+            } else {
+                ctx.fillStyle = `rgba(200,200,200,${a})`;
+                ctx.beginPath();
+                ctx.arc(s.x + p.ox, s.y + p.oy, p.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
         });
     }
+    ctx.globalAlpha = 1;
 }
 
 export function drawDarkSmokeParticles(ctx, particles) {
+    const smokeBlackImg = assets.images.smokeBlack;
+    const useSprite = smokeBlackImg && smokeBlackImg.complete && smokeBlackImg.naturalWidth > 0;
     for (const p of particles) {
         if (p.type === 'dark_smoke') {
             const life = Math.max(0, p.life);
             if (life < PARTICLE_VIS_EPS) continue;
-            ctx.fillStyle = p.color;
             ctx.globalAlpha = life;
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-            ctx.fill();
+            if (useSprite) {
+                const scale = p.spriteScale || 1;
+                const w = smokeBlackImg.naturalWidth * scale;
+                const h = smokeBlackImg.naturalHeight * scale;
+                ctx.drawImage(smokeBlackImg, p.x - w / 2, p.y - h / 2, w, h);
+            } else {
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
         }
     }
     ctx.globalAlpha = 1;
@@ -145,6 +210,8 @@ export function drawExplosions(ctx, explosions) {
  * @param {number} now — время кадра (performance.now или rAF timestamp), один раз на кадр
  */
 export function drawRockets(ctx, rockets, onRocketSmoke, now) {
+    const rocketImg = assets.images.rocket;
+    const useSprite = rocketImg && rocketImg.complete && rocketImg.naturalWidth > 0;
     for (let i = 0; i < rockets.length; i++) {
         const r = rockets[i];
         const el = now - r.startTime;
@@ -154,23 +221,24 @@ export function drawRockets(ctx, rockets, onRocketSmoke, now) {
         const a = Math.atan2(r.ty - r.sy, r.tx - r.sx);
         ctx.save();
         ctx.translate(rx, ry);
-        ctx.rotate(a);
-        ctx.fillStyle = '#000';
-        ctx.fillRect(-12, -4, 24, 8);
-        ctx.fillStyle = '#f44336';
-        ctx.beginPath();
-        ctx.moveTo(12, 0);
-        ctx.lineTo(4, -6);
-        ctx.lineTo(4, 6);
-        ctx.closePath();
-        ctx.fill();
-        ctx.fillStyle = '#000';
-        ctx.beginPath();
-        ctx.moveTo(-12, 0);
-        ctx.lineTo(-18, -8);
-        ctx.lineTo(-18, 8);
-        ctx.closePath();
-        ctx.fill();
+        // спрайт смотрит вверх — поворачиваем на -90° чтобы совпало с atan2 (вправо = 0)
+        ctx.rotate(a - Math.PI / 2);
+        if (useSprite) {
+            const w = rocketImg.naturalWidth;
+            const h = rocketImg.naturalHeight;
+            ctx.drawImage(rocketImg, -w / 2, -h / 2, w, h);
+        } else {
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillStyle = '#000';
+            ctx.fillRect(-12, -4, 24, 8);
+            ctx.fillStyle = '#f44336';
+            ctx.beginPath();
+            ctx.moveTo(12, 0);
+            ctx.lineTo(4, -6);
+            ctx.lineTo(4, 6);
+            ctx.closePath();
+            ctx.fill();
+        }
         ctx.restore();
         if (Math.random() > 0.5) onRocketSmoke(rx, ry);
     }

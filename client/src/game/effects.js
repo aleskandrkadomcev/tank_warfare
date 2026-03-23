@@ -20,40 +20,45 @@ export function spawnParticles(x, y, color, count, type = 'spark') {
             type,
         };
         if (type === 'smoke') {
-            p.vx = (Math.random() - 0.5) * 20;
-            p.vy = -Math.random() * 20 - 10;
+            p.vx = (Math.random() - 0.5) * 30;
+            p.vy = (Math.random() - 0.5) * 30;
             p.life = 1;
             p.size = Math.random() * 5 + 5;
             p.color = `rgba(150,150,150,0.5)`;
+            p.spriteScale = 1 + Math.random() * 0.5;
         }
         if (type === 'dark_smoke') {
-            p.vx = (Math.random() - 0.5) * 50;
-            p.vy = -Math.random() * 30 - 20;
+            p.vx = (Math.random() - 0.5) * 60;
+            p.vy = (Math.random() - 0.5) * 60;
             p.life = 2;
             p.size = Math.random() * 15 + 10;
             p.color = `rgba(30,30,30,0.7)`;
+            p.spriteScale = 1 + Math.random() * 0.5;
         }
         if (type === 'fire_smoke') {
-            p.vx = (Math.random() - 0.5) * 40;
-            p.vy = -Math.random() * 40 - 20;
+            p.vx = (Math.random() - 0.5) * 50;
+            p.vy = (Math.random() - 0.5) * 50;
             p.life = 1.5;
             p.size = Math.random() * 8 + 8;
             p.color = `rgba(50,50,50,0.6)`;
+            p.spriteScale = 1 + Math.random() * 0.5;
         }
         if (type === 'spark_fire') {
-            p.vx = (Math.random() - 0.5) * 300;
-            p.vy = -Math.random() * 300 - 100;
-            p.life = 0.4;
-            p.size = Math.random() * 2 + 1;
-            p.color = `rgba(255,100,0,0.9)`;
+            p.vx = (Math.random() - 0.5) * 200;
+            p.vy = (Math.random() - 0.5) * 200;
+            p.life = 0.6;
+            p.size = Math.random() * 3 + 1.5;
+            p.color = `rgba(255,220,0,0.95)`;
         }
         if (type === 'dirt') {
-            p.life = 0.3;
-            p.size = Math.random() * 2 + 1;
+            p.life = 0.7;
+            p.size = Math.random() * 2.5 + 2;
+            p.vx = (Math.random() - 0.5) * 80;
+            p.vy = (Math.random() - 0.5) * 80;
         }
         if (type === 'muzzle') {
-            p.life = 0.1;
-            p.size = Math.random() * 4 + 2;
+            p.life = 0.13;
+            p.size = Math.random() * 6 + 4;
         }
         particles.push(p);
     }
@@ -75,14 +80,47 @@ export function createSmokeCloud(x, y) {
             oy: Math.sin(a) * d,
             size: 30 + Math.random() * 40,
             alpha: 0,
+            spriteScale: 1 + Math.random() * 0.5,
         });
     }
     smokes.push(cloud);
 }
 
 export function createExplosion(x, y, radius) {
-    explosions.push({ x, y, radius, time: 0, maxTime: 0.3 });
-    spawnParticles(x, y, '#333', 30, 'dark_smoke');
+    explosions.push({ x, y, radius, time: 0, maxTime: 0.4 });
+    // тёмный дым — облако
+    spawnParticles(x, y, '#333', 18, 'dark_smoke');
+    // огненные искры разлетаются во все стороны
+    spawnParticles(x, y, '#ffdd00', 16, 'spark_fire');
+    // куски земли/обломки
+    spawnParticles(x, y, '#8B4513', 12, 'dirt');
+    // яркое пламя — два кольца (центр + периферия)
+    for (let i = 0; i < 12; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const speed = 50 + Math.random() * 120;
+        particles.push({
+            x, y,
+            vx: Math.cos(a) * speed,
+            vy: Math.sin(a) * speed,
+            life: 0.25 + Math.random() * 0.35,
+            color: `rgba(255,${80 + Math.floor(Math.random() * 120)},0,0.9)`,
+            size: Math.random() * 6 + 3,
+            type: 'spark',
+        });
+    }
+    // белая вспышка в центре
+    for (let i = 0; i < 4; i++) {
+        const a = Math.random() * Math.PI * 2;
+        particles.push({
+            x, y,
+            vx: Math.cos(a) * (10 + Math.random() * 20),
+            vy: Math.sin(a) * (10 + Math.random() * 20),
+            life: 0.1 + Math.random() * 0.1,
+            color: `rgba(255,255,200,0.95)`,
+            size: Math.random() * 8 + 5,
+            type: 'spark',
+        });
+    }
     const dist = Math.hypot(battle.tank.x - x, battle.tank.y - y);
     const vol = Math.max(0, 1 - dist / 1200);
     playSound_Explosion(vol);

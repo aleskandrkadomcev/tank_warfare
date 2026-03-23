@@ -11,6 +11,8 @@ import {
     drawDarkSmokeParticles,
     drawExplosions,
     drawMines,
+    drawMuzzleFlash,
+    drawParticlesDirt,
     drawParticlesSmoke,
     drawParticlesSparks,
     drawRockets,
@@ -96,8 +98,7 @@ export function drawGameFrame(ctx, view) {
     const halfW = width / 2 / scaleFactor;
     const halfH = height / 2 / scaleFactor;
     drawTracks(ctx, tracks, now, { camX, camY, halfW, halfH });
-
-    drawParticlesSparks(ctx, particles);
+    drawParticlesDirt(ctx, particles);
 
     drawMines(ctx, mines, session.myTeam);
 
@@ -158,8 +159,11 @@ export function drawGameFrame(ctx, view) {
     // Лес
     drawForests(ctx, forests, assets.images.forest);
 
+    drawMuzzleFlash(ctx, particles);
     drawSmokes(ctx, smokes);
     drawDarkSmokeParticles(ctx, particles);
+
+    drawParticlesSparks(ctx, particles);
 
     drawExplosions(ctx, explosions);
 

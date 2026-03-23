@@ -7,12 +7,16 @@ import tankTurretUrl from '../game-assets/images/tank_turret_green.png?url';
 import shadowBrickUrl from '../game-assets/images/shadow_brick.png?url';
 import brickUrl from '../game-assets/images/brick.png?url';
 import shadowForestUrl from '../game-assets/images/shadow_forest.png?url';
+import smokeUrl from '../game-assets/images/smoke.png?url';
+import smokeBlackUrl from '../game-assets/images/smoke_black.png?url';
+import smokeGreyUrl from '../game-assets/images/smoke_grey.png?url';
+import rocketUrl from '../game-assets/images/rocket.png?url';
 import brickHitUrl from '../game-assets/sounds/brick_hit.mp3?url';
 import explosionUrl from '../game-assets/sounds/explosion.mp3?url';
 import hitUrl from '../game-assets/sounds/hit.mp3?url';
 import shootUrl from '../game-assets/sounds/shoot.mp3?url';
 
-const totalAssets = 13;
+const totalAssets = 17;
 let assetsLoadedCount = 0;
 
 function checkAssetsLoaded(assets) {
@@ -35,6 +39,10 @@ function createAssets() {
       shadowBrick: new Image(),
       shadowForest: new Image(),
       brick: new Image(),
+      smoke: new Image(),
+      smokeBlack: new Image(),
+      smokeGrey: new Image(),
+      rocket: new Image(),
     },
     sounds: {
       shoot: new Audio(),
@@ -55,6 +63,10 @@ function createAssets() {
   assets.images.shadowBrick.src = shadowBrickUrl;
   assets.images.shadowForest.src = shadowForestUrl;
   assets.images.brick.src = brickUrl;
+  assets.images.smoke.src = smokeUrl;
+  assets.images.smokeBlack.src = smokeBlackUrl;
+  assets.images.smokeGrey.src = smokeGreyUrl;
+  assets.images.rocket.src = rocketUrl;
   assets.sounds.shoot.src = shootUrl;
   assets.sounds.hit.src = hitUrl;
   assets.sounds.explosion.src = explosionUrl;
