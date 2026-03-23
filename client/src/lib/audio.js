@@ -38,9 +38,12 @@ export function playSound_Explosion(vol = 1) {
   s.play().catch(() => { });
 }
 
+const brickHitVariants = ['brickHit1', 'brickHit2', 'brickHit3'];
 export function playSound_BrickHit(vol = 1) {
-  const s = assets.sounds.brickHit.cloneNode(true);
-  s.volume = vol;
+  const key = brickHitVariants[Math.floor(Math.random() * 3)];
+  const s = assets.sounds[key].cloneNode(true);
+  s.volume = vol * 0.5;
+  s.playbackRate = 0.9 + Math.random() * 0.5; // pitch 0.9–1.4
   s.play().catch(() => { });
 }
 

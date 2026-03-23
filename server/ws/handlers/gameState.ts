@@ -13,7 +13,8 @@ import {
 import { buildBotPathGrid } from '../../game/pathfinding.js';
 import { triggerMine } from '../../game/mine.js';
 import { broadcastGame, broadcastScores } from '../broadcast.js';
-import { lobbies } from '../lobbyStore.js';
+import { obbIntersectsObb } from '../../game/collision.js';
+import { lobbies, type Lobby, type LobbyHull } from '../lobbyStore.js';
 
 function pruneExpiredSmokes(lobby: (typeof lobbies)[string], now: number): void {
     lobby.smokes = lobby.smokes.filter((s) => s.expiresAt > now);
@@ -104,7 +105,7 @@ function canObserverDetectTarget(lobby: (typeof lobbies)[string], observer: WebS
     return true;
 }
 
-function isTargetVisibleToTeam(lobby: (typeof lobbies)[string], target: WebSocket, team: number, now: number): boolean {
+export function isTargetVisibleToTeam(lobby: (typeof lobbies)[string], target: WebSocket, team: number, now: number): boolean {
     const key = `${team}:${target.id}`;
     /** Союзники того же `team`, включая ботов: боты тоже «засекают» врагов для команды. */
     const teamCanSeeNow = lobby.players.some(
@@ -115,6 +116,52 @@ function isTargetVisibleToTeam(lobby: (typeof lobbies)[string], target: WebSocke
         return true;
     }
     return (lobby.detectionVisibleUntil[key] ?? 0) >= now;
+}
+
+/** Толкает остовы от танка. Возвращает массив сдвинутых hull. */
+function pushHullsFromTank(lobby: Lobby, tx: number, ty: number, tAngle: number, tw: number, th: number): LobbyHull[] {
+    const pushed: LobbyHull[] = [];
+    const thw = tw / 2;
+    const thh = th / 2;
+    const map = lobby.mapData;
+    for (const hull of lobby.hulls) {
+        if (!obbIntersectsObb(tx, ty, tAngle, thw, thh, hull.x, hull.y, hull.angle, hull.w / 2, hull.h / 2)) continue;
+        const dx = hull.x - tx;
+        const dy = hull.y - ty;
+        const d = Math.hypot(dx, dy) || 1;
+        hull.x += (dx / d) * 4;
+        hull.y += (dy / d) * 4;
+        if (map) {
+            hull.x = Math.max(hull.w / 2, Math.min(map.w - hull.w / 2, hull.x));
+            hull.y = Math.max(hull.h / 2, Math.min(map.h - hull.h / 2, hull.y));
+        }
+        pushed.push(hull);
+    }
+    // Остовы не стакаются — расталкиваем друг от друга
+    for (let a = 0; a < lobby.hulls.length; a++) {
+        const ha = lobby.hulls[a];
+        for (let b = a + 1; b < lobby.hulls.length; b++) {
+            const hb = lobby.hulls[b];
+            if (obbIntersectsObb(ha.x, ha.y, ha.angle, ha.w / 2, ha.h / 2, hb.x, hb.y, hb.angle, hb.w / 2, hb.h / 2)) {
+                const dx = hb.x - ha.x;
+                const dy = hb.y - ha.y;
+                const d = Math.hypot(dx, dy) || 1;
+                hb.x += (dx / d) * 4;
+                hb.y += (dy / d) * 4;
+                ha.x -= (dx / d) * 4;
+                ha.y -= (dy / d) * 4;
+                if (map) {
+                    ha.x = Math.max(ha.w / 2, Math.min(map.w - ha.w / 2, ha.x));
+                    ha.y = Math.max(ha.h / 2, Math.min(map.h - ha.h / 2, ha.y));
+                    hb.x = Math.max(hb.w / 2, Math.min(map.w - hb.w / 2, hb.x));
+                    hb.y = Math.max(hb.h / 2, Math.min(map.h - hb.h / 2, hb.y));
+                }
+                if (!pushed.includes(ha)) pushed.push(ha);
+                if (!pushed.includes(hb)) pushed.push(hb);
+            }
+        }
+    }
+    return pushed;
 }
 
 export function handleState(_wss: WebSocketServer, ws: WebSocket, data: Record<string, unknown>): void {
@@ -138,6 +185,14 @@ export function handleState(_wss: WebSocketServer, ws: WebSocket, data: Record<s
             team: ws.team,
         };
         ws.lastPosAt = Date.now();
+
+        // Толкаем остовы
+        if (lobby.hulls && lobby.hulls.length > 0 && ws.hp > 0) {
+            const pushed = pushHullsFromTank(lobby, ws.x, ws.y, ws.angle ?? 0, ws.w ?? 75, ws.h ?? 45);
+            for (const h of pushed) {
+                broadcastGame(lobby, { type: ServerMsg.HULL_UPDATE, id: h.id, x: h.x, y: h.y, angle: h.angle });
+            }
+        }
 
         if (lobby.mines) {
             lobby.mines.forEach((mine) => {
@@ -187,6 +242,7 @@ export function handleRestartMatch(_wss: WebSocketServer, ws: WebSocket, _data: 
         lobby.boosts = [];
         lobby.rockets = [];
         lobby.aiBullets = [];
+        lobby.hulls = [];
         lobby.aiGrid = lobby.mapData ? buildBotPathGrid(lobby.mapData) : null;
         lobby.detectionVisibleUntil = {};
         lobby.smokes = [];
@@ -204,6 +260,21 @@ export function handleDeath(_wss: WebSocketServer, ws: WebSocket, _data: Record<
         ws.hp = 0;
         if (ws.lastPos) ws.lastPos.hp = 0;
         ws.spawnTime = Date.now() + 2000;
+
+        // Остов мёртвого танка
+        const hullX = ws.lastPos?.x ?? ws.x;
+        const hullY = ws.lastPos?.y ?? ws.y;
+        const hull = {
+            id: `hull_${ws.id}_${Date.now()}`,
+            x: hullX,
+            y: hullY,
+            angle: ws.angle ?? 0,
+            w: 75,
+            h: 45,
+        };
+        lobby.hulls.push(hull);
+        broadcastGame(lobby, { type: ServerMsg.HULL_SPAWN, ...hull });
+
         const enemyTeam = ws.team === 1 ? 2 : 1;
         lobby.scores[enemyTeam]++;
         broadcastScores(lobby);
@@ -213,7 +284,7 @@ export function handleDeath(_wss: WebSocketServer, ws: WebSocket, _data: Record<
         } else if (lobby.scores[enemyTeam] >= MAX_SCORE) {
             broadcastGame(lobby, { type: ServerMsg.GAME_OVER, winner: enemyTeam });
         } else {
-            broadcastGame(lobby, { type: ServerMsg.PLAYER_DIED, playerId: ws.id });
+            broadcastGame(lobby, { type: ServerMsg.PLAYER_DIED, playerId: ws.id, x: hullX, y: hullY });
         }
     }
 }

@@ -18,6 +18,8 @@ export const world = {
     mines: [],
     rockets: [],
     explosions: [],
+    explosionMarks: [],
+    hulls: [],
 };
 
 /** Вызывать при любой мутации `world.bricks` (загрузка карты, splice, очистка). */

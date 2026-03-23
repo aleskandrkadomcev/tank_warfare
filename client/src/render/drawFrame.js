@@ -11,6 +11,7 @@ import {
     drawDarkSmokeParticles,
     drawExplosions,
     drawMines,
+    drawExplosionMarks,
     drawMuzzleFlash,
     drawParticlesDirt,
     drawParticlesSmoke,
@@ -19,7 +20,7 @@ import {
     drawSmokes,
     drawTracks,
 } from './effects.js';
-import { drawTank, drawTankShadow } from './tank.js';
+import { drawDeadHull, drawTank, drawTankShadow } from './tank.js';
 import { beginNicknameDrawPass, drawAimCrosshair, drawNickname, endNicknameDrawPass } from './uiOverlay.js';
 import {
     drawBoostIcon,
@@ -54,14 +55,15 @@ export function drawGameFrame(ctx, view) {
         smokes,
         explosions,
         rockets,
+        hulls,
         cachedPatterns,
         onRocketSmoke,
     } = view;
 
     const dx = (keys['MouseX'] || width / 2) - width / 2;
     const dy = (keys['MouseY'] || height / 2) - height / 2;
-    const rawCamX = tank.x + (dx / scaleFactor) * 0.33;
-    const rawCamY = tank.y + (dy / scaleFactor) * 0.33;
+    const rawCamX = tank.x + (dx / scaleFactor) * 0.5;
+    const rawCamY = tank.y + (dy / scaleFactor) * 0.5;
     const c = clampCamera(rawCamX, rawCamY, width, height, scaleFactor, level.mapWidth, level.mapHeight);
     const shake = getShakeOffset(view.dt || 0.016);
     const camX = c.x + shake.x;
@@ -85,6 +87,11 @@ export function drawGameFrame(ctx, view) {
         perlinImg: assets.images.perlinMask,
     });
 
+    // Метки взрывов на земле
+    if (view.explosionMarks) {
+        drawExplosionMarks(ctx, view.explosionMarks);
+    }
+
     boosts.forEach((b) => drawBoostIcon(ctx, b.x, b.y, b.type));
 
     // Круг обзора игрока
@@ -101,6 +108,13 @@ export function drawGameFrame(ctx, view) {
     drawParticlesDirt(ctx, particles);
 
     drawMines(ctx, mines, session.myTeam);
+
+    // Остовы мёртвых танков (ниже живых)
+    if (hulls) {
+        for (const hull of hulls) {
+            drawDeadHull(ctx, hull);
+        }
+    }
 
     // 1. Тени танков (самый нижний слой)
     for (const id in enemyTanks) {

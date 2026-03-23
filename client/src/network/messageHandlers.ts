@@ -60,7 +60,7 @@ export function configureServerMessages(api: { send: (d: SendPayload) => void })
 
 function getVolumeByDistance(tx: number, ty: number) {
     const d = Math.hypot(battle.tank.x - tx, battle.tank.y - ty);
-    return Math.max(0, 1 - d / 1200);
+    return Math.max(0, 1 - d / 1920);
 }
 
 function handleLobbyList(d: Record<string, unknown>) {
@@ -174,11 +174,16 @@ function handleGameOver(d: Record<string, unknown>) {
 function handlePlayerDied(d: Record<string, unknown>) {
     if (d.playerId !== session.myId) {
         const et = battle.enemyTanks[d.playerId as string];
+        // Координаты смерти — из врага или из серверного сообщения
+        const deathX = et ? et.x : (d.x as number);
+        const deathY = et ? et.y : (d.y as number);
         if (et) {
             et.hp = 0;
             et.spawnImmunityTimer = SPAWN_IMMUNITY_TIME;
-            gameMessageHooks.spawnParticles(et.x, et.y, '#ffeb3b', 20);
-            const vol = getVolumeByDistance(et.x, et.y);
+        }
+        if (deathX != null && deathY != null) {
+            gameMessageHooks.spawnParticles(deathX, deathY, '#ffeb3b', 20);
+            const vol = getVolumeByDistance(deathX, deathY);
             playSound_Explosion(vol);
         }
     } else {
@@ -380,7 +385,17 @@ function handleRestartMatch(d: Record<string, unknown>) {
         level.biome = map.biome;
         bumpBricksDrawRevision();
     }
+    (world as any).hulls.length = 0;
     gameMessageHooks.resetMatch();
+}
+
+function handleHullUpdate(d: Record<string, unknown>) {
+    const hull = (world as any).hulls.find((h: any) => h.id === d.id);
+    if (hull) {
+        hull.x = d.x as number;
+        hull.y = d.y as number;
+        hull.angle = d.angle as number;
+    }
 }
 
 function handleBoostSpawn(d: Record<string, unknown>) {
@@ -389,6 +404,17 @@ function handleBoostSpawn(d: Record<string, unknown>) {
         y: d.y as number,
         type: d.bType as number,
         id: d.id as string,
+    });
+}
+
+function handleHullSpawn(d: Record<string, unknown>) {
+    (world as any).hulls.push({
+        id: d.id as string,
+        x: d.x as number,
+        y: d.y as number,
+        angle: d.angle as number,
+        w: d.w as number,
+        h: d.h as number,
     });
 }
 
@@ -492,6 +518,8 @@ const handlers: Partial<Record<(typeof ServerMsg)[keyof typeof ServerMsg], Serve
     [ServerMsg.BRICKS_DESTROY_BATCH]: handleBricksDestroyBatch,
     [ServerMsg.RESTART_MATCH]: handleRestartMatch,
     [ServerMsg.BOOST_SPAWN]: handleBoostSpawn,
+    [ServerMsg.HULL_SPAWN]: handleHullSpawn,
+    [ServerMsg.HULL_UPDATE]: handleHullUpdate,
     [ServerMsg.BOOST_PICKUP]: handleBoostPickup,
     [ServerMsg.STATE]: handleRemoteState,
     [ServerMsg.BULLET]: handleBullet,

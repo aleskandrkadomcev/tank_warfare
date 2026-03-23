@@ -75,11 +75,26 @@ export function drawTank(ctx, t) {
     }
     ctx.restore();
 
-    if (t.hp < TANK_MAX_HP && t.hp > 0) {
+    if (t.hp < TANK_MAX_HP && t.hp > 0 && !t._isHull) {
         ctx.fillStyle = '#333';
         ctx.fillRect(t.x - 20, t.y - 30, 40, 5);
         const isAlly = t._isAlly !== undefined ? t._isAlly : true;
         ctx.fillStyle = isAlly ? '#4CAF50' : '#f44336';
         ctx.fillRect(t.x - 20, t.y - 30, (t.hp / TANK_MAX_HP) * 40, 5);
     }
+}
+
+export function drawDeadHull(ctx, hull) {
+    const deadImg = assets.images.tankDead;
+    ctx.save();
+    ctx.translate(hull.x, hull.y);
+    ctx.rotate(hull.angle);
+    if (assets.loaded && deadImg.complete && deadImg.naturalWidth > 0) {
+        ctx.drawImage(deadImg, -deadImg.naturalWidth / 2, -deadImg.naturalHeight / 2);
+    } else {
+        ctx.globalAlpha = 0.7;
+        ctx.fillStyle = '#222';
+        ctx.fillRect(-hull.w / 2, -hull.h / 2, hull.w, hull.h);
+    }
+    ctx.restore();
 }

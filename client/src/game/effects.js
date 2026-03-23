@@ -28,9 +28,9 @@ export function spawnParticles(x, y, color, count, type = 'spark') {
             p.spriteScale = 1 + Math.random() * 0.5;
         }
         if (type === 'dark_smoke') {
-            p.vx = (Math.random() - 0.5) * 60;
-            p.vy = (Math.random() - 0.5) * 60;
-            p.life = 2;
+            p.vx = (Math.random() - 0.5) * 40;
+            p.vy = (Math.random() - 0.5) * 40;
+            p.life = 4;
             p.size = Math.random() * 15 + 10;
             p.color = `rgba(30,30,30,0.7)`;
             p.spriteScale = 1 + Math.random() * 0.5;
@@ -88,6 +88,8 @@ export function createSmokeCloud(x, y) {
 
 export function createExplosion(x, y, radius) {
     explosions.push({ x, y, radius, time: 0, maxTime: 0.4 });
+    // Метка взрыва на земле (чёрное пятно)
+    world.explosionMarks.push({ x, y, angle: Math.random() * Math.PI * 2, scale: 0.8 + Math.random() * 0.5 });
     // тёмный дым — облако
     spawnParticles(x, y, '#333', 18, 'dark_smoke');
     // огненные искры разлетаются во все стороны
@@ -122,6 +124,6 @@ export function createExplosion(x, y, radius) {
         });
     }
     const dist = Math.hypot(battle.tank.x - x, battle.tank.y - y);
-    const vol = Math.max(0, 1 - dist / 1200);
+    const vol = Math.max(0, 1 - dist / 1920);
     playSound_Explosion(vol);
 }

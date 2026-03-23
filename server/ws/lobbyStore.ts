@@ -53,6 +53,15 @@ export type LobbyBotBullet = {
     ttl: number;
 };
 
+export type LobbyHull = {
+    id: string;
+    x: number;
+    y: number;
+    angle: number;
+    w: number;
+    h: number;
+};
+
 export type Lobby = {
     hostId: string;
     name: string;
@@ -67,6 +76,8 @@ export type Lobby = {
     mapData: MapData | null;
     aiTickHandle: ReturnType<typeof setInterval> | null;
     mapSize?: string;
+    /** Остовы мёртвых танков — блокируют проезд и пули. */
+    hulls: LobbyHull[];
     /** Активные облака дыма (серверная копия для обнаружения). */
     smokes: LobbySmokeCloud[];
     /**

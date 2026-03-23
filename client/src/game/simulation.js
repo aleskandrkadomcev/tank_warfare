@@ -3,6 +3,7 @@
  * Сеть — только через переданный send(); DOM — через updateInventoryUI.
  */
 import { ClientMsg } from '../../../shared/dist/protocol.js';
+import { DETECTION_MEMORY_MS } from '../config/constants.js';
 import {
     ACCEL_FORWARD,
     ACCEL_REVERSE,
@@ -41,6 +42,8 @@ import {
     checkBulletBrickCollision,
     clampTankCenterToMap,
     getTankHullHalfExtents,
+    obbIntersectsObb,
+    pointInsideObb,
     separateTankFromBricks,
     tankBrickCollisionIndex,
 } from './collision.js';
@@ -78,6 +81,14 @@ export function runSimulation(dt, ctx) {
     const mapH = level.mapHeight;
 
     if (!session.gameStarted) return;
+    // Удаляем врагов, которых давно не видно
+    const now = performance.now();
+    for (const id in enemyTanks) {
+        const et = enemyTanks[id];
+        if ((et.lastSeenAt ?? 0) + DETECTION_MEMORY_MS < now) {
+            delete enemyTanks[id];
+        }
+    }
     if (session.gameStarted && tank.hp > 0) updateInventoryUI();
     if (keys['KeyR'] && session.isHost) {
         send({ type: ClientMsg.RESTART_MATCH });
@@ -177,6 +188,35 @@ export function runSimulation(dt, ctx) {
     if (colY === -1) tank.y = ny;
     else tank.vy = 0;
     separateTankFromBricks(tank, bricks, mapW, mapH);
+    // Локальное толкание остовов (масса — танк замедляется)
+    for (const hull of world.hulls) {
+        if (obbIntersectsObb(tank.x, tank.y, tank.angle, hw, hh, hull.x, hull.y, hull.angle, hull.w / 2, hull.h / 2)) {
+            const dx = hull.x - tank.x;
+            const dy = hull.y - tank.y;
+            const d = Math.hypot(dx, dy) || 1;
+            hull.x += (dx / d) * 4;
+            hull.y += (dy / d) * 4;
+            // Масса — танк теряет скорость
+            tank.vx *= 0.4;
+            tank.vy *= 0.4;
+        }
+    }
+    // Остовы не должны стакаться
+    for (let a = 0; a < world.hulls.length; a++) {
+        const ha = world.hulls[a];
+        for (let b = a + 1; b < world.hulls.length; b++) {
+            const hb = world.hulls[b];
+            if (obbIntersectsObb(ha.x, ha.y, ha.angle, ha.w / 2, ha.h / 2, hb.x, hb.y, hb.angle, hb.w / 2, hb.h / 2)) {
+                const dx = hb.x - ha.x;
+                const dy = hb.y - ha.y;
+                const d = Math.hypot(dx, dy) || 1;
+                hb.x += (dx / d) * 4;
+                hb.y += (dy / d) * 4;
+                ha.x -= (dx / d) * 4;
+                ha.y -= (dy / d) * 4;
+            }
+        }
+    }
 
     for (const id in enemyTanks) {
         const et = enemyTanks[id];
@@ -210,7 +250,7 @@ export function runSimulation(dt, ctx) {
 
     const mySpeedNorm = Math.abs(forwardSpeed) / currentMaxSpeed;
     let enemySpeed = 0;
-    let distToEnemy = 1200;
+    let distToEnemy = 1920;
     for (const id in enemyTanks) {
         const et = enemyTanks[id];
         if (et.hp > 0) {
@@ -221,7 +261,7 @@ export function runSimulation(dt, ctx) {
             }
         }
     }
-    const distFactor = Math.max(0, 1 - distToEnemy / 1200);
+    const distFactor = Math.max(0, 1 - distToEnemy / 1920);
     if (session.myEngine) session.myEngine.update(dt, mySpeedNorm, 1);
     if (session.enemyEngine) session.enemyEngine.update(dt, enemySpeed / MAX_SPEED_FORWARD, distFactor);
 
@@ -237,7 +277,7 @@ export function runSimulation(dt, ctx) {
     }
     for (const id in enemyTanks) {
         const et = enemyTanks[id];
-        if (et.hp > 0) {
+        if (et.hp > 0 && (et.lastSeenAt ?? 0) + DETECTION_MEMORY_MS >= now) {
             if (et.hp <= 35) {
                 if (Math.random() < 0.15) spawnParticles(et.x, et.y, '#555', 1, 'fire_smoke');
                 if (Math.random() > 0.93) spawnParticles(et.x, et.y, '#ffdd00', 1, 'spark_fire');
@@ -245,6 +285,10 @@ export function runSimulation(dt, ctx) {
                 spawnParticles(et.x, et.y, '#888', 1, 'smoke');
             }
         }
+    }
+    // Чёрный дым от остовов (медленно рассеивается)
+    for (const hull of world.hulls) {
+        if (Math.random() < 0.02) spawnParticles(hull.x, hull.y, '#111', 1, 'dark_smoke');
     }
 
     const speedAbs = Math.abs(forwardSpeed);
@@ -374,7 +418,8 @@ export function runSimulation(dt, ctx) {
         const bi = checkBulletBrickCollision(b.x, b.y, 2, mapW, mapH, bricks);
         if (bi >= 0) {
             spawnParticles(b.x, b.y, '#8b4513', 5);
-            playSound_BrickHit(1);
+            const brickDist = Math.hypot(tank.x - b.x, tank.y - b.y);
+            playSound_BrickHit(Math.max(0, 1 - brickDist / 1920));
             const hx = bricks[bi].x;
             const hy = bricks[bi].y;
             bricks.splice(bi, 1);
@@ -388,6 +433,18 @@ export function runSimulation(dt, ctx) {
             });
             continue;
         }
+        // Пуля попала в остов — искры + звук, без урона
+        let hitHull = false;
+        for (const hull of world.hulls) {
+            if (pointInsideObb(b.x, b.y, hull.x, hull.y, hull.angle, hull.w / 2, hull.h / 2)) {
+                spawnParticles(b.x, b.y, '#888', 3);
+                playSound_Hit();
+                bullets.splice(i, 1);
+                hitHull = true;
+                break;
+            }
+        }
+        if (hitHull) continue;
         if (b.ownerId === session.myId) {
             for (const id in enemyTanks) {
                 const et = enemyTanks[id];
@@ -443,7 +500,6 @@ export function runSimulation(dt, ctx) {
         if (e.time > e.maxTime) explosions.splice(i, 1);
     }
     updateBoosts(dt, send, updateInventoryUI);
-    const now = performance.now();
     while (tracks.length > 0 && now - tracks[0].time > TRACK_LIFETIME) tracks.shift();
     while (tracks.length > MAX_TRACKS_IN_WORLD) tracks.shift();
 }

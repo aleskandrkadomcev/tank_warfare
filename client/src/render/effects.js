@@ -243,3 +243,17 @@ export function drawRockets(ctx, rockets, onRocketSmoke, now) {
         if (Math.random() > 0.5) onRocketSmoke(rx, ry);
     }
 }
+
+export function drawExplosionMarks(ctx, marks) {
+    const img = assets.images.explosionMark;
+    if (!assets.loaded || !img.complete || !img.naturalWidth) return;
+    for (const m of marks) {
+        ctx.save();
+        ctx.translate(m.x, m.y);
+        ctx.rotate(m.angle);
+        const w = img.naturalWidth * m.scale;
+        const h = img.naturalHeight * m.scale;
+        ctx.drawImage(img, -w / 2, -h / 2, w, h);
+        ctx.restore();
+    }
+}

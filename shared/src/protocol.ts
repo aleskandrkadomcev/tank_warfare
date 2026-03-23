@@ -54,6 +54,8 @@ export const ServerMsg = Object.freeze({
     SCORE_UPDATE: 'score_update',
     MINE_TRIGGERED: 'mine_triggered',
     MINE_REMOVED: 'mine_removed',
+    HULL_SPAWN: 'hull_spawn',
+    HULL_UPDATE: 'hull_update',
 } as const);
 
 export type ClientMsgKey = keyof typeof ClientMsg;

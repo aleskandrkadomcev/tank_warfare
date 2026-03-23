@@ -30,6 +30,7 @@ export function handleCreateLobby(wss: WebSocketServer, ws: WebSocket, data: Rec
         gameStarted: false,
         mapData: null,
         aiTickHandle: null,
+        hulls: [],
         detectionVisibleUntil: {},
         smokes: [],
         mapSize: typeof data.mapSize === 'string' ? data.mapSize : 'small',
@@ -137,9 +138,7 @@ export function handleStartGame(_wss: WebSocketServer, ws: WebSocket, data: Reco
                 }),
             );
         });
-        if (lobby.players.some((p) => p.isBot)) {
-            startAiTick(_wss, lobby);
-        }
+        startAiTick(_wss, lobby);
     }
 }
 

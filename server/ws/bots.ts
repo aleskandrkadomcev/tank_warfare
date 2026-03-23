@@ -4,10 +4,12 @@ import { BRICK_SIZE, DETECTION_RADIUS_SMALL, FOREST_SECTION_SIZE, SMOKE_CLOUD_RA
 import { log } from '../logger.js';
 import { broadcastGame } from './broadcast.js';
 import { handleDealDamage } from './handlers/combat.js';
-import { handleState } from './handlers/gameState.js';
+import { handleState, isTargetVisibleToTeam } from './handlers/gameState.js';
 import {
     clampTankCenterToMap,
     getTankHullHalfExtents,
+    obbIntersectsObb,
+    pointInsideObb,
     separateTankFromBricks,
     tankBrickCollisionIndex,
 } from '../game/collision.js';
@@ -321,6 +323,50 @@ function moveBotTowards(bot: WebSocket, goal: { x: number; y: number }, dtSec: n
     } else {
         bot.vy = 0;
     }
+    // Боты толкают остовы
+    const hulls = lobby.hulls || [];
+    const pushedHulls: typeof hulls = [];
+    let hitHull = false;
+    for (const h of hulls) {
+        if (obbIntersectsObb(bot.x, bot.y, bot.angle, hw, hh, h.x, h.y, h.angle, h.w / 2, h.h / 2)) {
+            const dx = h.x - bot.x;
+            const dy = h.y - bot.y;
+            const d = Math.hypot(dx, dy) || 1;
+            h.x += (dx / d) * 4;
+            h.y += (dy / d) * 4;
+            // Бот отталкивается назад
+            bot.x -= (dx / d) * 2;
+            bot.y -= (dy / d) * 2;
+            h.x = Math.max(h.w / 2, Math.min(map.w - h.w / 2, h.x));
+            h.y = Math.max(h.h / 2, Math.min(map.h - h.h / 2, h.y));
+            pushedHulls.push(h);
+            hitHull = true;
+        }
+    }
+    if (hitHull) {
+        bot.vx *= 0.4;
+        bot.vy *= 0.4;
+    }
+    // Остовы не стакаются
+    for (let a = 0; a < hulls.length; a++) {
+        for (let b = a + 1; b < hulls.length; b++) {
+            if (obbIntersectsObb(hulls[a].x, hulls[a].y, hulls[a].angle, hulls[a].w / 2, hulls[a].h / 2,
+                hulls[b].x, hulls[b].y, hulls[b].angle, hulls[b].w / 2, hulls[b].h / 2)) {
+                const dx = hulls[b].x - hulls[a].x;
+                const dy = hulls[b].y - hulls[a].y;
+                const d = Math.hypot(dx, dy) || 1;
+                hulls[b].x += (dx / d) * 4;
+                hulls[b].y += (dy / d) * 4;
+                hulls[a].x -= (dx / d) * 4;
+                hulls[a].y -= (dy / d) * 4;
+                if (!pushedHulls.includes(hulls[a])) pushedHulls.push(hulls[a]);
+                if (!pushedHulls.includes(hulls[b])) pushedHulls.push(hulls[b]);
+            }
+        }
+    }
+    for (const h of pushedHulls) {
+        broadcastGame(lobby, { type: ServerMsg.HULL_UPDATE, id: h.id, x: h.x, y: h.y, angle: h.angle });
+    }
 
     separateTankFromBricks(bot, map.bricks, map.w, map.h);
     clampTankCenterToMap(bot, map.w, map.h);
@@ -343,12 +389,17 @@ function removeBotBullet(lobby: Lobby, bulletId: string): void {
 }
 
 function findBulletHitTarget(lobby: Lobby, bullet: LobbyBotBullet): WebSocket | null {
+    const isPlayerBullet = bullet.ownerId.startsWith('p_');
+    const now = Date.now();
     let closest: WebSocket | null = null;
     let closestDist = Infinity;
     lobby.players.forEach((player) => {
         if (player.id === bullet.ownerId || player.team === bullet.ownerTeam || !isAlivePlayer(player)) return;
         const pos = getActorPosition(player);
         if (pos.hp <= 0) return;
+        // Для пуль игроков: сервер обрабатывает только попадания по НЕвидимым врагам,
+        // видимых обрабатывает клиент через DEAL_DAMAGE
+        if (isPlayerBullet && isTargetVisibleToTeam(lobby, player, bullet.ownerTeam, now)) return;
         const dist = Math.hypot(pos.x - bullet.x, pos.y - bullet.y);
         if (dist < closestDist) {
             closest = player;
@@ -360,17 +411,57 @@ function findBulletHitTarget(lobby: Lobby, bullet: LobbyBotBullet): WebSocket | 
 
 function stepBotBullets(wss: WebSocketServer, lobby: Lobby, dtSec: number): void {
     const now = Date.now();
+    const bricks = lobby.mapData?.bricks || [];
     for (let i = lobby.aiBullets.length - 1; i >= 0; i--) {
         const bullet = lobby.aiBullets[i];
         bullet.x += bullet.vx * dtSec;
         bullet.y += bullet.vy * dtSec;
+        const isPlayerBullet = bullet.ownerId.startsWith('p_');
         if (now - bullet.createdAt >= bullet.ttl) {
             removeBotBullet(lobby, bullet.bulletId);
+            continue;
+        }
+        // Пуля вылетела за карту
+        const map = lobby.mapData;
+        if (map && (bullet.x < 0 || bullet.x > map.w || bullet.y < 0 || bullet.y > map.h)) {
+            if (isPlayerBullet) {
+                // Тихо убираем серверную копию — клиент сам обработает
+                lobby.aiBullets.splice(i, 1);
+            } else {
+                removeBotBullet(lobby, bullet.bulletId);
+            }
+            continue;
+        }
+        // Пуля попала в кирпич
+        const hitBrick = bricks.some((b) =>
+            bullet.x >= b.x && bullet.x <= b.x + BRICK_SIZE && bullet.y >= b.y && bullet.y <= b.y + BRICK_SIZE,
+        );
+        if (hitBrick) {
+            if (isPlayerBullet) {
+                lobby.aiBullets.splice(i, 1);
+            } else {
+                removeBotBullet(lobby, bullet.bulletId);
+            }
+            continue;
+        }
+        // Пуля попала в остов
+        const hitHull = (lobby.hulls || []).some((h) =>
+            pointInsideObb(bullet.x, bullet.y, h.x, h.y, h.angle, h.w / 2, h.h / 2),
+        );
+        if (hitHull) {
+            if (isPlayerBullet) {
+                lobby.aiBullets.splice(i, 1);
+            } else {
+                removeBotBullet(lobby, bullet.bulletId);
+            }
             continue;
         }
         const target = findBulletHitTarget(lobby, bullet);
         if (target) {
             const shooter = lobby.players.find((p) => p.id === bullet.ownerId);
+            // Удаляем пулю и оповещаем клиентов
+            lobby.aiBullets.splice(i, 1);
+            broadcastBulletRemoval(lobby, bullet.bulletId);
             if (shooter) {
                 handleDealDamage(
                     wss,
@@ -385,7 +476,6 @@ function stepBotBullets(wss: WebSocketServer, lobby: Lobby, dtSec: number): void
                     },
                 );
             }
-            removeBotBullet(lobby, bullet.bulletId);
         }
     }
 }
@@ -551,22 +641,20 @@ export function removeBotFromLobby(lobby: Lobby, botId?: string): WebSocket | nu
 }
 
 export function startAiTick(wss: WebSocketServer, lobby: Lobby): void {
-    if (lobby.aiTickHandle || !hasBots(lobby)) return;
+    if (lobby.aiTickHandle) return;
     lobby.aiTickHandle = setInterval(() => {
         try {
             if (!lobby.gameStarted) {
                 stopAiTick(lobby);
                 return;
             }
-            if (!hasBots(lobby)) {
-                stopAiTick(lobby);
-                return;
-            }
             const dtSec = BOT_TICK_MS / 1000;
             stepBotBullets(wss, lobby, dtSec);
-            lobby.players
-                .filter(isBotPlayer)
-                .forEach((bot) => updateBot(wss, lobby, bot, dtSec));
+            if (hasBots(lobby)) {
+                lobby.players
+                    .filter(isBotPlayer)
+                    .forEach((bot) => updateBot(wss, lobby, bot, dtSec));
+            }
         } catch (error) {
             log.error('bot_tick_failed', error);
             stopAiTick(lobby);

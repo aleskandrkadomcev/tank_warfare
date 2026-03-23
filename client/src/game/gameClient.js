@@ -31,6 +31,8 @@ const {
     mines,
     rockets,
     explosions,
+    hulls,
+    explosionMarks,
 } = world;
 const { tank, enemyTanks } = battle;
 
@@ -258,6 +260,8 @@ function resetMatch() {
     mines.length = 0;
     rockets.length = 0;
     explosions.length = 0;
+    hulls.length = 0;
+    explosionMarks.length = 0;
     tank.hp = TANK_MAX_HP;
     tank.isDead = false;
     tank.damageBoostTimer = 0;
@@ -389,6 +393,8 @@ function loop(ts) {
         smokes,
         explosions,
         rockets,
+        hulls,
+        explosionMarks,
         cachedPatterns,
         bricksDrawRevision: world.bricksDrawRevision,
         dt,

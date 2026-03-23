@@ -123,6 +123,49 @@ export function checkBulletBrickCollision(
     return -1;
 }
 
+/** Точка (px,py) внутри OBB (центр cx,cy, угол angle, полуоси hw,hh). */
+export function pointInsideObb(
+    px: number, py: number,
+    cx: number, cy: number, angle: number,
+    hw: number, hh: number,
+): boolean {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const dx = px - cx;
+    const dy = py - cy;
+    const localX = dx * cos + dy * sin;
+    const localY = -dx * sin + dy * cos;
+    return Math.abs(localX) <= hw && Math.abs(localY) <= hh;
+}
+
+/** OBB-vs-OBB (SAT, 4 оси). */
+export function obbIntersectsObb(
+    ax: number, ay: number, aAngle: number, ahw: number, ahh: number,
+    bx: number, by: number, bAngle: number, bhw: number, bhh: number,
+): boolean {
+    const cosA = Math.cos(aAngle);
+    const sinA = Math.sin(aAngle);
+    const cosB = Math.cos(bAngle);
+    const sinB = Math.sin(bAngle);
+    const axes = [
+        [cosA, sinA],
+        [-sinA, cosA],
+        [cosB, sinB],
+        [-sinB, cosB],
+    ];
+    for (let i = 0; i < 4; i++) {
+        const ux = axes[i][0];
+        const uy = axes[i][1];
+        const aC = ax * ux + ay * uy;
+        const aR = ahw * Math.abs(cosA * ux + sinA * uy) + ahh * Math.abs(-sinA * ux + cosA * uy);
+        const bC = bx * ux + by * uy;
+        const bR = bhw * Math.abs(cosB * ux + sinB * uy) + bhh * Math.abs(-sinB * ux + cosB * uy);
+        if (aC + aR < bC - bR - SAT_EPS) return false;
+        if (aC - aR > bC + bR + SAT_EPS) return false;
+    }
+    return true;
+}
+
 export function clampTankCenterToMap(tank: TankLike, mapWidth: number, mapHeight: number): void {
     const { hw, hh } = getTankObbWorldAabbHalfExtents(tank.angle, tank.w, tank.h);
     tank.x = Math.max(hw, Math.min(mapWidth - hw, tank.x));
