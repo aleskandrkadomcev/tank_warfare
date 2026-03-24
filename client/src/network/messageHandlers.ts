@@ -112,6 +112,11 @@ function handleLobbyState(d: Record<string, unknown>) {
             btn.classList.toggle('ready', Boolean(me.ready));
         }
     }
+    // Синхронизируем scoreLimit в UI (гостям — показываем значение хоста)
+    if (typeof d.scoreLimit === 'number') {
+        const sel = document.getElementById('scoreLimitSelect') as HTMLSelectElement | null;
+        if (sel) sel.value = String(d.scoreLimit);
+    }
 }
 
 function handleStart(d: Record<string, unknown>) {
@@ -126,6 +131,7 @@ function handleStart(d: Record<string, unknown>) {
     }
     session.myTeam = d.team as number;
     session.myColor = d.color as string;
+    if (typeof d.scoreLimit === 'number') battle.scoreLimit = d.scoreLimit;
     ((d.allPlayers as { id: string; nick: string; team: number; color: string; isBot?: boolean }[]) || []).forEach((p) => {
         session.playerData[p.id] = { nick: p.nick, team: p.team, color: p.color, isBot: Boolean(p.isBot) };
     });
@@ -454,8 +460,9 @@ function handleRemoteState(d: Record<string, unknown>) {
     const dx = (d.x as number) - et.x;
     const dy = (d.y as number) - et.y;
     const dist = Math.hypot(dx, dy);
-    level.trackSpawnDist += dist;
-    if (level.trackSpawnDist > 8 && et.hp > 0) {
+    if (et._trackDist === undefined) et._trackDist = 0;
+    et._trackDist += dist;
+    if (et._trackDist > 15 && et.hp > 0) {
         const off = 18;
         const a = d.angle as number;
         gameMessageHooks.addTrack(
@@ -468,7 +475,7 @@ function handleRemoteState(d: Record<string, unknown>) {
             (d.y as number) - Math.sin(a - Math.PI / 2) * off,
             a,
         );
-        level.trackSpawnDist = 0;
+        et._trackDist = 0;
     }
     et.x = d.x as number;
     et.y = d.y as number;

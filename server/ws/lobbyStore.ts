@@ -76,6 +76,8 @@ export type Lobby = {
     mapData: MapData | null;
     aiTickHandle: ReturnType<typeof setInterval> | null;
     mapSize?: string;
+    /** Сколько очков для победы (по умолчанию MAX_SCORE). */
+    scoreLimit: number;
     /** Остовы мёртвых танков — блокируют проезд и пули. */
     hulls: LobbyHull[];
     /** Активные облака дыма (серверная копия для обнаружения). */

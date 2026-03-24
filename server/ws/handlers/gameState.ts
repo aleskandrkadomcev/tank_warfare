@@ -279,9 +279,10 @@ export function handleDeath(_wss: WebSocketServer, ws: WebSocket, _data: Record<
         lobby.scores[enemyTeam]++;
         broadcastScores(lobby);
 
-        if (lobby.scores[1] >= MAX_SCORE && lobby.scores[2] >= MAX_SCORE) {
+        const limit = lobby.scoreLimit ?? MAX_SCORE;
+        if (lobby.scores[1] >= limit && lobby.scores[2] >= limit) {
             broadcastGame(lobby, { type: ServerMsg.GAME_OVER, winner: 0 });
-        } else if (lobby.scores[enemyTeam] >= MAX_SCORE) {
+        } else if (lobby.scores[enemyTeam] >= limit) {
             broadcastGame(lobby, { type: ServerMsg.GAME_OVER, winner: enemyTeam });
         } else {
             broadcastGame(lobby, { type: ServerMsg.PLAYER_DIED, playerId: ws.id, x: hullX, y: hullY });

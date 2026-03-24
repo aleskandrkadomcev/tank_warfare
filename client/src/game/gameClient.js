@@ -14,6 +14,7 @@ import {
 } from '../network/messageHandlers.js';
 import { connectGameSocket, isGameSocketOpen, sendGameMessage } from '../network/socket.js';
 import { drawGameFrame } from '../render/drawFrame.js';
+import { resetTrackCanvas } from '../render/effects.js';
 import { findSpawnSpot } from './collision.js';
 import { shadeColor } from './colorUtils.js';
 import { addTrack, createExplosion, createSmokeCloud, spawnParticles } from './effects.js';
@@ -121,6 +122,7 @@ function createLobby() {
                 lobbyName: name,
                 color: session.myColor,
                 mapSize: document.getElementById('mapSizeSelect')?.value || 'small',
+                scoreLimit: parseInt(document.getElementById('scoreLimitSelect')?.value || '5', 10),
             }),
         300,
     );
@@ -166,6 +168,7 @@ function showLobby(id, name, isHost) {
     document.getElementById('btnAddBot').style.display = isHost ? 'inline-block' : 'none';
     document.getElementById('btnRemoveBot').style.display = isHost ? 'inline-block' : 'none';
     document.getElementById('mapSizeSelector').style.display = isHost ? 'block' : 'none';
+    document.getElementById('scoreLimitSelector').style.display = isHost ? 'block' : 'none';
     document.getElementById('lobbyNickInput').value = session.myNickname;
     document.getElementById('lobbyNickInput').oninput = (e) => {
         session.myNickname = sanitize(e.target.value, 12);
@@ -173,6 +176,15 @@ function showLobby(id, name, isHost) {
             sendGameMessage({ type: ClientMsg.UPDATE_PLAYER, nickname: session.myNickname });
         }
     };
+    // Хост меняет scoreLimit — отправляем на сервер
+    const scoreLimitEl = document.getElementById('scoreLimitSelect');
+    if (isHost && scoreLimitEl) {
+        scoreLimitEl.onchange = () => {
+            if (isGameSocketOpen()) {
+                sendGameMessage({ type: ClientMsg.UPDATE_PLAYER, scoreLimit: parseInt(scoreLimitEl.value, 10) });
+            }
+        };
+    }
     initColorPicker();
 }
 function escapeLobbyIdAttr(id) {
@@ -254,6 +266,7 @@ function resetMatch() {
     document.getElementById('victory-screen').style.display = 'none';
     document.getElementById('death-screen').style.display = 'none';
     tracks.length = 0;
+    resetTrackCanvas();
     particles.length = 0;
     boosts.length = 0;
     smokes.length = 0;
@@ -272,6 +285,8 @@ function resetMatch() {
     tank.smokeCount = 0;
     tank.mineCount = 0;
     tank.rocketCount = 0;
+    tank.healCount = 1;
+    tank.healCooldown = 0;
     for (const id in enemyTanks) {
         enemyTanks[id].hp = TANK_MAX_HP;
         enemyTanks[id].vx = 0;
@@ -298,6 +313,8 @@ function spawnMyTank() {
     tank.smokeCount = 0;
     tank.mineCount = 0;
     tank.rocketCount = 0;
+    tank.healCount = 1;
+    tank.healCooldown = 0;
     tank.spawnImmunityTimer = SPAWN_IMMUNITY_TIME;
     document.getElementById('death-screen').style.display = 'none';
     updateInventoryUI();
@@ -337,10 +354,11 @@ function resize() {
 
 function updateInventoryUI() {
     if (!session.gameStarted) return;
-    const sig = `${tank.smokeCount}|${tank.mineCount}|${tank.rocketCount}|${Math.ceil(tank.damageBoostTimer)}|${Math.ceil(tank.speedBoostTimer)}`;
+    const sig = `${tank.healCount}|${tank.smokeCount}|${tank.mineCount}|${tank.rocketCount}|${Math.ceil(tank.damageBoostTimer)}|${Math.ceil(tank.speedBoostTimer)}`;
     if (sig === boostPanelRenderSig) return;
     boostPanelRenderSig = sig;
     let html = '';
+    html += `<div class="boost-indicator"><div class="boost-icon" style="background:#4CAF50;border:1px solid #fff;"></div>Хилка [F]: ${tank.healCount}</div>`;
     html += `<div class="boost-indicator"><div class="boost-icon" style="background:#888;border:1px solid #fff;"></div>Дым: ${tank.smokeCount}</div>`;
     html += `<div class="boost-indicator"><div class="boost-icon" style="background:#2e4634;border:1px solid #fff;"></div>Мины: ${tank.mineCount}</div>`;
     html += `<div class="boost-indicator"><div class="boost-icon" style="background:#ffeb3b;border:1px solid #f44336;"></div>Ракеты: ${tank.rocketCount}</div>`;
@@ -409,6 +427,8 @@ function loop(ts) {
 function updateUI() {
     document.getElementById('score-me').innerText = battle.myScore;
     document.getElementById('score-enemy').innerText = battle.enemyScore;
+    const limitEl = document.getElementById('score-limit');
+    if (limitEl) limitEl.innerText = `/ ${battle.scoreLimit}`;
 }
 
 window.onresize = resize;

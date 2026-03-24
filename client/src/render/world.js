@@ -187,97 +187,29 @@ export function drawForests(ctx, forests, forestImg) {
     }
 }
 
+/** Маппинг type → ключ в assets.images */
+const BOOST_TYPE_TO_IMAGE = [
+    'repairBox',   // 0 — хилка
+    'atackSpeed',  // 1 — урон
+    'speedBoost',  // 2 — скорость
+    'smokeBox',    // 3 — дым
+    'mineBox',     // 4 — мина
+    'rocketBox',   // 5 — ракета
+];
+
 export function drawBoostIcon(ctx, x, y, type) {
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.scale(BOOST_ICON_SCALE, BOOST_ICON_SCALE);
-    const r = 12;
-    if (type === 0) {
-        ctx.fillStyle = '#4CAF50';
+    const key = BOOST_TYPE_TO_IMAGE[type];
+    const img = key && assets.images[key];
+    if (img && img.complete && img.naturalWidth > 0) {
+        const w = img.naturalWidth;
+        const h = img.naturalHeight;
+        ctx.drawImage(img, x - w / 2, y - h / 2, w, h);
+    } else {
+        // Фолбэк — простой цветной круг
+        const colors = ['#4CAF50', '#f44336', '#2196F3', '#888', '#2e4634', '#ffeb3b'];
+        ctx.fillStyle = colors[type] || '#888';
         ctx.beginPath();
-        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.arc(x, y, 12 * BOOST_ICON_SCALE, 0, Math.PI * 2);
         ctx.fill();
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(-5, 2);
-        ctx.lineTo(0, 7);
-        ctx.lineTo(5, -3);
-        ctx.moveTo(0, 7);
-        ctx.lineTo(0, -5);
-        ctx.stroke();
-    } else if (type === 1) {
-        ctx.fillStyle = '#f44336';
-        ctx.beginPath();
-        ctx.arc(0, 0, r, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#ffeb3b';
-        ctx.beginPath();
-        ctx.moveTo(6, -4);
-        ctx.lineTo(6, 4);
-        ctx.lineTo(-4, 0);
-        ctx.closePath();
-        ctx.fill();
-    } else if (type === 2) {
-        ctx.fillStyle = '#2196F3';
-        ctx.beginPath();
-        ctx.arc(0, 0, r, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#fff';
-        ctx.beginPath();
-        ctx.moveTo(-6, -5);
-        ctx.lineTo(-1, 0);
-        ctx.lineTo(-6, 5);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.moveTo(1, -5);
-        ctx.lineTo(6, 0);
-        ctx.lineTo(1, 5);
-        ctx.fill();
-    } else if (type === 3) {
-        ctx.fillStyle = '#888';
-        ctx.fillRect(-r, -r, r * 2, r * 2);
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(-r, -r, r * 2, r * 2);
-        ctx.fillStyle = '#fff';
-        ctx.beginPath();
-        ctx.arc(-3, 2, 5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(4, -1, 4, 0, Math.PI * 2);
-        ctx.fill();
-    } else if (type === 4) {
-        ctx.fillStyle = '#2e4634';
-        ctx.fillRect(-r, -r, r * 2, r * 2);
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(-r, -r, r * 2, r * 2);
-        ctx.fillStyle = '#000';
-        ctx.beginPath();
-        ctx.arc(0, 0, 6, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#f44336';
-        ctx.beginPath();
-        ctx.arc(0, 0, 3, 0, Math.PI * 2);
-        ctx.fill();
-    } else if (type === 5) {
-        ctx.fillStyle = '#ffeb3b';
-        ctx.fillRect(-r, -r, r * 2, r * 2);
-        ctx.strokeStyle = '#f44336';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(-r, -r, r * 2, r * 2);
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(0, -8);
-        ctx.lineTo(0, 8);
-        ctx.moveTo(-8, 0);
-        ctx.lineTo(8, 0);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(0, 0, 4, 0, Math.PI * 2);
-        ctx.stroke();
     }
-    ctx.restore();
 }

@@ -43,6 +43,16 @@
         <option value="large">Большая (5120×2880)</option>
       </select>
     </div>
+    <div id="scoreLimitSelector" style="margin: 15px 0">
+      <div style="font-size: 14px; color: #aaa; margin-bottom: 5px">Очков для победы:</div>
+      <select id="scoreLimitSelect" style="padding: 5px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px">
+        <option value="3">3</option>
+        <option value="5" selected>5</option>
+        <option value="10">10</option>
+        <option value="15">15</option>
+        <option value="20">20</option>
+      </select>
+    </div>
     <div class="lobby-teams">
       <div style="flex: 1">
         <h3 style="color: #4caf50; margin: 5px 0">🟢 Команда 1</h3>
@@ -78,6 +88,7 @@
   </div>
   <div id="score-board">
     <span id="score-me" style="color: #4caf50">0</span> - <span id="score-enemy" style="color: #f44336">0</span>
+    <span id="score-limit" style="color: #aaa; font-size: 14px; margin-left: 8px">/ 5</span>
   </div>
   <div id="boost-panel"></div>
   <div id="victory-screen" class="overlay-msg">ПОБЕДА!</div>

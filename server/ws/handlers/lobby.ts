@@ -1,4 +1,5 @@
 import { ServerMsg } from '#shared/protocol.js';
+import { MAX_SCORE, SCORE_LIMITS } from '#shared/map.js';
 import type { WebSocket, WebSocketServer } from 'ws';
 import { MAX_PLAYERS } from '../../constants.js';
 import { generateMapData } from '../../game/mapGenerator.js';
@@ -7,6 +8,13 @@ import { isValidColor, sanitizeLobbyName, sanitizeNick } from '../../utils/valid
 import { createBotForLobby, initBotsForStart, startAiTick } from '../bots.js';
 import { broadcastLobbyList, broadcastLobbyState } from '../broadcast.js';
 import { lobbies } from '../lobbyStore.js';
+
+function parseScoreLimit(val: unknown): number {
+    const n = typeof val === 'number' ? val : typeof val === 'string' ? parseInt(val, 10) : NaN;
+    if (!Number.isFinite(n)) return MAX_SCORE;
+    // берём ближайшее допустимое значение
+    return (SCORE_LIMITS as readonly number[]).includes(n) ? n : MAX_SCORE;
+}
 
 export function handleCreateLobby(wss: WebSocketServer, ws: WebSocket, data: Record<string, unknown>): void {
     console.log('[DEBUG] handleCreateLobby data.mapSize =', data.mapSize);
@@ -34,6 +42,7 @@ export function handleCreateLobby(wss: WebSocketServer, ws: WebSocket, data: Rec
         detectionVisibleUntil: {},
         smokes: [],
         mapSize: typeof data.mapSize === 'string' ? data.mapSize : 'small',
+        scoreLimit: parseScoreLimit(data.scoreLimit),
     };
     ws.send(
         JSON.stringify({
@@ -84,6 +93,10 @@ export function handleUpdatePlayer(_wss: WebSocketServer, ws: WebSocket, data: R
     if (lobby && !lobby.gameStarted) {
         if (typeof data.nickname === 'string') ws.nickname = sanitizeNick(data.nickname);
         if (typeof data.color === 'string' && isValidColor(data.color)) ws.color = data.color;
+        // Хост может менять настройки лобби
+        if (ws.id === lobby.hostId) {
+            if (data.scoreLimit !== undefined) lobby.scoreLimit = parseScoreLimit(data.scoreLimit);
+        }
         broadcastLobbyState(lobby);
     }
 }
@@ -127,6 +140,7 @@ export function handleStartGame(_wss: WebSocketServer, ws: WebSocket, data: Reco
                     team: p.team,
                     playerId: p.id,
                     color: p.color,
+                    scoreLimit: lobby.scoreLimit,
                     allPlayers: lobby.players.map((pl) => ({
                         id: pl.id,
                         nick: pl.nickname,

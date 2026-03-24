@@ -43,6 +43,7 @@ export function broadcastLobbyState(lobby: Lobby): void {
         })),
         hostId: lobby.hostId,
         name: lobby.name,
+        scoreLimit: lobby.scoreLimit,
     };
     lobby.players.forEach((p) => {
         if (p.readyState === 1) p.send(JSON.stringify(state));

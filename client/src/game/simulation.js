@@ -103,6 +103,18 @@ export function runSimulation(dt, ctx) {
     if (tank.damageBoostTimer > 0) tank.damageBoostTimer -= dt;
     if (tank.speedBoostTimer > 0) tank.speedBoostTimer -= dt;
     if (tank.collisionTimer > 0) tank.collisionTimer -= dt;
+    if (tank.healCooldown > 0) tank.healCooldown -= dt;
+
+    // Хилка — расходник на F
+    if (keys['KeyF'] && tank.healCount > 0 && tank.healCooldown <= 0 && tank.hp > 0 && tank.hp < TANK_MAX_HP) {
+        tank.healCount--;
+        tank.healCooldown = 2;
+        tank.hp = Math.min(TANK_MAX_HP, tank.hp + 50);
+        spawnParticles(tank.x, tank.y, '#4CAF50', 10);
+        playSound_Heal();
+        keys['KeyF'] = false;
+        updateInventoryUI();
+    }
 
     if (keys['KeyQ'] && tank.smokeCount > 0) {
         tank.smokeCount--;
@@ -291,9 +303,17 @@ export function runSimulation(dt, ctx) {
         if (Math.random() < 0.02) spawnParticles(hull.x, hull.y, '#111', 1, 'dark_smoke');
     }
 
+    // speedAbs нужен для разброса стрельбы
     const speedAbs = Math.abs(forwardSpeed);
-    level.trackSpawnDist += speedAbs * dt;
-    if (level.trackSpawnDist > 8) {
+    // Считаем дистанцию по реальному перемещению (а не forwardSpeed),
+    // чтобы следы появлялись и при толкании от коллизий / остовов.
+    const _prevX = level._prevTrackX ?? tank.x;
+    const _prevY = level._prevTrackY ?? tank.y;
+    const movedDist = Math.hypot(tank.x - _prevX, tank.y - _prevY);
+    level._prevTrackX = tank.x;
+    level._prevTrackY = tank.y;
+    level.trackSpawnDist += movedDist;
+    if (level.trackSpawnDist > 15) {
         const off = 18;
         addTrack(
             tank.x - Math.cos(tank.angle + Math.PI / 2) * off,
@@ -342,6 +362,11 @@ export function runSimulation(dt, ctx) {
     else if (hullTurnDir !== 0) finalSpeed = Math.max(0.1, finalSpeed - TURN_SPEED * 0.5);
     if (Math.abs(diff) < finalSpeed * dt) tank.turretAngle = targetAngle;
     else tank.turretAngle += diff > 0 ? finalSpeed * dt : -finalSpeed * dt;
+
+    // Прицел — плавное движение вдоль оси башни
+    const targetAimDist = Math.max(60, Math.hypot(wx - tank.x, wy - tank.y));
+    const aimLerp = 1 - Math.exp(-8 * dt); // экспоненциальное затухание, ~8 единиц/сек
+    tank.aimDist += (targetAimDist - tank.aimDist) * aimLerp;
 
     if (tank.reload > 0) tank.reload -= dt;
     let reloadTime = BASE_RELOAD_TIME;
@@ -438,7 +463,8 @@ export function runSimulation(dt, ctx) {
         for (const hull of world.hulls) {
             if (pointInsideObb(b.x, b.y, hull.x, hull.y, hull.angle, hull.w / 2, hull.h / 2)) {
                 spawnParticles(b.x, b.y, '#888', 3);
-                playSound_Hit();
+                const hullDist = Math.hypot(tank.x - b.x, tank.y - b.y);
+                playSound_Hit(Math.max(0, 1 - hullDist / 1920));
                 bullets.splice(i, 1);
                 hitHull = true;
                 break;
@@ -517,13 +543,13 @@ function updateBoosts(dt, send, updateInventoryUI) {
 
 function applyBoost(type, updateInventoryUI) {
     if (type === 0) {
-        tank.hp = Math.min(TANK_MAX_HP, tank.hp + 50);
+        tank.healCount++;
         spawnParticles(tank.x, tank.y, '#4CAF50', 10);
-        playSound_Heal();
+        playSound_Speed();
     } else if (type === 1) {
         tank.damageBoostTimer += BOOST_DURATION;
         spawnParticles(tank.x, tank.y, '#ffeb3b', 10);
-        playSound_Damage();
+        playSound_Speed();
     } else if (type === 2) {
         tank.speedBoostTimer += BOOST_SPEED_DURATION;
         spawnParticles(tank.x, tank.y, '#2196F3', 10);
@@ -531,15 +557,15 @@ function applyBoost(type, updateInventoryUI) {
     } else if (type === 3) {
         tank.smokeCount++;
         spawnParticles(tank.x, tank.y, '#9C27B0', 10);
-        playSound_Heal();
+        playSound_Speed();
     } else if (type === 4) {
         tank.mineCount++;
         spawnParticles(tank.x, tank.y, '#333', 10);
-        playSound_Heal();
+        playSound_Speed();
     } else if (type === 5) {
         tank.rocketCount++;
         spawnParticles(tank.x, tank.y, '#ffeb3b', 10);
-        playSound_Heal();
+        playSound_Speed();
     }
     updateInventoryUI();
 }

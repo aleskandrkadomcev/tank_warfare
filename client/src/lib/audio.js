@@ -42,13 +42,15 @@ const brickHitVariants = ['brickHit1', 'brickHit2', 'brickHit3'];
 export function playSound_BrickHit(vol = 1) {
   const key = brickHitVariants[Math.floor(Math.random() * 3)];
   const s = assets.sounds[key].cloneNode(true);
-  s.volume = vol * 0.5;
+  s.volume = vol * 0.35;
   s.playbackRate = 0.9 + Math.random() * 0.5; // pitch 0.9–1.4
   s.play().catch(() => { });
 }
 
-export function playSound_Heal() {
-  for (let i = 0; i < 3; i++) setTimeout(() => tone(500 + i * 150, 0.06, 'sine', 0.1), i * 40);
+export function playSound_Heal(vol = 1) {
+  const s = assets.sounds.repair.cloneNode(true);
+  s.volume = Math.max(0, Math.min(1, vol));
+  s.play().catch(() => { });
 }
 
 export function playSound_Speed() {

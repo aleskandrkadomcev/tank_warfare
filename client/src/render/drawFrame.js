@@ -19,6 +19,7 @@ import {
     drawRockets,
     drawSmokes,
     drawTracks,
+    drawCloudShadows,
 } from './effects.js';
 import { drawDeadHull, drawTank, drawTankShadow } from './tank.js';
 import { beginNicknameDrawPass, drawAimCrosshair, drawNickname, endNicknameDrawPass } from './uiOverlay.js';
@@ -104,7 +105,7 @@ export function drawGameFrame(ctx, view) {
     ctx.restore();
     const halfW = width / 2 / scaleFactor;
     const halfH = height / 2 / scaleFactor;
-    drawTracks(ctx, tracks, now, { camX, camY, halfW, halfH });
+    drawTracks(ctx, tracks, now, { camX, camY, halfW, halfH }, level.mapWidth, level.mapHeight);
     drawParticlesDirt(ctx, particles);
 
     drawMines(ctx, mines, session.myTeam);
@@ -182,6 +183,9 @@ export function drawGameFrame(ctx, view) {
     drawExplosions(ctx, explosions);
 
     drawRockets(ctx, rockets, onRocketSmoke, now);
+
+    // Тень от облаков — поверх всего
+    drawCloudShadows(ctx, now, { camX, camY, halfW, halfH });
 
     if (tank.hp > 0) {
         drawAimCrosshair(ctx, tank);

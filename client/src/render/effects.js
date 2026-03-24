@@ -1,41 +1,95 @@
 /**
  * Следы, частицы, мины, снаряды, дым, взрывы, ракеты (фаза 3.3).
  */
-import { BULLET_DAMAGE_BASE, TRACK_LIFETIME } from '../config/constants.js';
+import { BULLET_DAMAGE_BASE } from '../config/constants.js';
 import { assets } from '../lib/assets.js';
 
 /** Не рисуем частицы/дым с пренебрежимой непрозрачностью — экономия beginPath/arc/fill. */
 const PARTICLE_VIS_EPS = 0.002;
 
+/* ── Offscreen-canvas для следов гусениц ── */
+let _trackCanvas = null;
+let _trackCtx = null;
+let _lastFadeTime = 0;
+/** Интервал fade-прохода (мс). */
+const FADE_INTERVAL = 250;
 /**
- * @param {{ camX: number, camY: number, halfW: number, halfH: number }} [viewWorld] — центр камеры и полуразмеры видимой области в мировых координатах; без аргумента рисуем все следы.
+ * Alpha для destination-out за один шаг.
+ * (1 - 0.056)^80 ≈ 0.01 → след исчезает за ~20 сек (80 шагов × 250 мс).
  */
-export function drawTracks(ctx, tracks, now, viewWorld) {
-    if (tracks.length === 0) return;
-    const baseTransform = ctx.getTransform();
-    let minX;
-    let maxX;
-    let minY;
-    let maxY;
+const FADE_ALPHA = 0.056;
+/** Непрозрачность штампа нового следа. */
+const STAMP_ALPHA = 0.25;
+const STAMP_COLOR = 'rgb(30,25,20)';
+
+/** Сбросить offscreen-холст (при смене карты / новом раунде). */
+export function resetTrackCanvas() {
+    _trackCanvas = null;
+    _trackCtx = null;
+}
+
+/**
+ * Штампует новые следы на offscreen-canvas, периодически затухает,
+ * и блитит видимую область на основной ctx.
+ * Вместо сотен fillRect/кадр — один drawImage.
+ */
+export function drawTracks(ctx, tracks, now, viewWorld, mapWidth, mapHeight) {
+    // Ленивая инициализация / пересоздание при смене размера карты
+    if (!_trackCanvas || _trackCanvas.width !== mapWidth || _trackCanvas.height !== mapHeight) {
+        _trackCanvas = document.createElement('canvas');
+        _trackCanvas.width = mapWidth;
+        _trackCanvas.height = mapHeight;
+        _trackCtx = _trackCanvas.getContext('2d');
+        _lastFadeTime = now;
+    }
+
+    const tc = _trackCtx;
+
+    // Штампуем только новые (ещё не отрисованные) следы
+    let hasNew = false;
+    for (let i = 0, len = tracks.length; i < len; i++) {
+        const t = tracks[i];
+        if (t.stamped) continue;
+        t.stamped = true;
+        if (!hasNew) {
+            tc.fillStyle = STAMP_COLOR;
+            tc.globalAlpha = STAMP_ALPHA;
+            hasNew = true;
+        }
+        tc.save();
+        tc.translate(t.x, t.y);
+        tc.rotate(t.angle);
+        tc.fillRect(-8, -3, 16, 6);
+        tc.restore();
+    }
+    if (hasNew) tc.globalAlpha = 1;
+
+    // Периодическое затухание — destination-out убирает альфу у всего холста
+    if (now - _lastFadeTime >= FADE_INTERVAL) {
+        const steps = Math.floor((now - _lastFadeTime) / FADE_INTERVAL);
+        const totalAlpha = 1 - Math.pow(1 - FADE_ALPHA, steps);
+        tc.globalCompositeOperation = 'destination-out';
+        tc.fillStyle = `rgba(0,0,0,${totalAlpha.toFixed(4)})`;
+        tc.fillRect(0, 0, mapWidth, mapHeight);
+        tc.globalCompositeOperation = 'source-over';
+        _lastFadeTime += steps * FADE_INTERVAL;
+    }
+
+    // Блит видимой области на основной canvas
     if (viewWorld) {
         const m = 32;
-        minX = viewWorld.camX - viewWorld.halfW - m;
-        maxX = viewWorld.camX + viewWorld.halfW + m;
-        minY = viewWorld.camY - viewWorld.halfH - m;
-        maxY = viewWorld.camY + viewWorld.halfH + m;
+        const sx = Math.max(0, Math.floor(viewWorld.camX - viewWorld.halfW - m));
+        const sy = Math.max(0, Math.floor(viewWorld.camY - viewWorld.halfH - m));
+        const ex = Math.min(mapWidth, Math.ceil(viewWorld.camX + viewWorld.halfW + m));
+        const ey = Math.min(mapHeight, Math.ceil(viewWorld.camY + viewWorld.halfH + m));
+        const sw = ex - sx;
+        const sh = ey - sy;
+        if (sw > 0 && sh > 0) {
+            ctx.drawImage(_trackCanvas, sx, sy, sw, sh, sx, sy, sw, sh);
+        }
+    } else {
+        ctx.drawImage(_trackCanvas, 0, 0);
     }
-    for (const t of tracks) {
-        const age = now - t.time;
-        const alpha = Math.max(0, 1 - age / TRACK_LIFETIME);
-        if (alpha < PARTICLE_VIS_EPS) continue;
-        if (viewWorld && (t.x < minX || t.x > maxX || t.y < minY || t.y > maxY)) continue;
-        ctx.setTransform(baseTransform);
-        ctx.translate(t.x, t.y);
-        ctx.rotate(t.angle);
-        ctx.fillStyle = `rgba(30,25,20,${alpha * 0.3})`;
-        ctx.fillRect(-8, -3, 16, 6);
-    }
-    ctx.setTransform(baseTransform);
 }
 
 export function drawMuzzleFlash(ctx, particles) {
@@ -84,16 +138,24 @@ export function drawParticlesSparks(ctx, particles) {
 }
 
 export function drawMines(ctx, mines, myTeam) {
+    const img = assets.images.mine;
+    const useSprite = img && img.complete && img.naturalWidth > 0;
     mines.forEach((m) => {
         if (m.ownerTeam === myTeam || m.triggered) {
-            ctx.fillStyle = '#000';
-            ctx.beginPath();
-            ctx.arc(m.x, m.y, 10, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = '#f44336';
-            ctx.beginPath();
-            ctx.arc(m.x, m.y, 5, 0, Math.PI * 2);
-            ctx.fill();
+            if (useSprite) {
+                const w = img.naturalWidth;
+                const h = img.naturalHeight;
+                ctx.drawImage(img, m.x - w / 2, m.y - h / 2, w, h);
+            } else {
+                ctx.fillStyle = '#000';
+                ctx.beginPath();
+                ctx.arc(m.x, m.y, 10, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#f44336';
+                ctx.beginPath();
+                ctx.arc(m.x, m.y, 5, 0, Math.PI * 2);
+                ctx.fill();
+            }
         }
     });
 }
@@ -241,6 +303,52 @@ export function drawRockets(ctx, rockets, onRocketSmoke, now) {
         }
         ctx.restore();
         if (Math.random() > 0.5) onRocketSmoke(rx, ry);
+    }
+}
+
+/* ── Тень от облаков ── */
+/** Рандомное направление движения (выбирается один раз). */
+let _cloudAngle = Math.random() * Math.PI * 2;
+const CLOUD_SPEED = 60; // px/сек
+const CLOUD_SCALE = 5;  // растянуть текстуру в 5 раз
+let _cloudOffsetX = 0;
+let _cloudOffsetY = 0;
+let _cloudLastTime = 0;
+
+export function drawCloudShadows(ctx, now, viewWorld) {
+    const img = assets.images.cloudShadow;
+    if (!img || !img.complete || !img.naturalWidth) return;
+
+    // Обновляем смещение по времени
+    if (_cloudLastTime === 0) _cloudLastTime = now;
+    const elapsed = (now - _cloudLastTime) / 1000;
+    _cloudLastTime = now;
+    _cloudOffsetX += Math.cos(_cloudAngle) * CLOUD_SPEED * elapsed;
+    _cloudOffsetY += Math.sin(_cloudAngle) * CLOUD_SPEED * elapsed;
+
+    const tw = img.naturalWidth * CLOUD_SCALE;
+    const th = img.naturalHeight * CLOUD_SCALE;
+
+    // Оборачиваем смещение, чтобы не уплыть в бесконечность
+    _cloudOffsetX = ((_cloudOffsetX % tw) + tw) % tw;
+    _cloudOffsetY = ((_cloudOffsetY % th) + th) % th;
+
+    // Рисуем только тайлы, попадающие в viewport
+    if (!viewWorld) return;
+    const minX = viewWorld.camX - viewWorld.halfW - tw;
+    const maxX = viewWorld.camX + viewWorld.halfW + tw;
+    const minY = viewWorld.camY - viewWorld.halfH - th;
+    const maxY = viewWorld.camY + viewWorld.halfH + th;
+
+    const startTileX = Math.floor((minX - _cloudOffsetX) / tw);
+    const endTileX = Math.ceil((maxX - _cloudOffsetX) / tw);
+    const startTileY = Math.floor((minY - _cloudOffsetY) / th);
+    const endTileY = Math.ceil((maxY - _cloudOffsetY) / th);
+
+    for (let tx = startTileX; tx <= endTileX; tx++) {
+        for (let ty = startTileY; ty <= endTileY; ty++) {
+            ctx.drawImage(img, _cloudOffsetX + tx * tw, _cloudOffsetY + ty * th, tw, th);
+        }
     }
 }
 

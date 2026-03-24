@@ -25,8 +25,9 @@ export function drawNickname(ctx, t, isMy, session) {
 }
 
 export function drawAimCrosshair(ctx, tank) {
-    const aimX = tank.x + Math.cos(tank.turretAngle) * 200;
-    const aimY = tank.y + Math.sin(tank.turretAngle) * 200;
+    const dist = tank.aimDist || 200;
+    const aimX = tank.x + Math.cos(tank.turretAngle) * dist;
+    const aimY = tank.y + Math.sin(tank.turretAngle) * dist;
     ctx.strokeStyle = 'rgba(255,0,0,0.5)';
     ctx.lineWidth = 2;
     ctx.beginPath();

@@ -1,9 +1,9 @@
 export { PLAYER_TANK_COLORS as TANK_COLORS } from '../../../shared/dist/colors.js';
 export { BRICK_SIZE, MAP_HEIGHT, MAP_WIDTH, MAX_SCORE } from '../../../shared/dist/map.js';
 
-export const TRACK_LIFETIME = 15000;
-/** Верхняя граница числа следов в памяти — иначе drawTracks линейно просаживает FPS при длинной езде / мультиплеере. */
-export const MAX_TRACKS_IN_WORLD = 512;
+export const TRACK_LIFETIME = 20000;
+/** Верхняя граница числа следов в памяти. */
+export const MAX_TRACKS_IN_WORLD = 4096;
 export const VIRTUAL_HEIGHT = 1080;
 
 export const MAX_SPEED_FORWARD = 225;

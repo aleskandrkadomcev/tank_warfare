@@ -49,12 +49,16 @@ export const battle = {
         smokeCount: 0,
         mineCount: 0,
         rocketCount: 0,
+        healCount: 1,
+        healCooldown: 0,
+        aimDist: 200,
         isDead: false,
         spawnImmunityTimer: 0,
     },
     enemyTanks: {},
     myScore: 0,
     enemyScore: 0,
+    scoreLimit: 5,
     bulletCounter: 0,
 };
 
