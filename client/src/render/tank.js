@@ -1,8 +1,8 @@
 /**
- * Отрисовка танка (спрайт или fallback-геометрия) + полоска HP.
+ * Отрисовка танка (запечённый скин или fallback-геометрия) + полоска HP.
  */
-import { TANK_MAX_HP } from '../config/constants.js';
 import { assets } from '../lib/assets.js';
+import { getTankSkin } from './tankSkin.js';
 
 /**
  * @param {CanvasRenderingContext2D} ctx
@@ -16,8 +16,8 @@ export function drawTankShadow(ctx, t) {
     ctx.filter = 'blur(3px)';
     ctx.fillStyle = '#000';
     ctx.beginPath();
-    const hw = 75 / 2;
-    const hh = 45 / 2;
+    const hw = (t.w || 75) / 2;
+    const hh = (t.h || 45) / 2;
     const r = 4;
     ctx.moveTo(-hw + r, -hh);
     ctx.lineTo(hw - r, -hh);
@@ -34,6 +34,8 @@ export function drawTankShadow(ctx, t) {
 }
 
 export function drawTank(ctx, t) {
+    const skin = getTankSkin(t.color, t.camo || 'none', t.tankType || 'medium');
+
     ctx.save();
     ctx.translate(t.x, t.y);
     ctx.rotate(t.angle);
@@ -41,46 +43,57 @@ export function drawTank(ctx, t) {
         ctx.globalAlpha = 0.5;
     }
 
-    const baseImg = assets.images.tankBase;
-    if (assets.loaded && baseImg.complete && baseImg.naturalWidth > 0) {
-        ctx.drawImage(baseImg, -baseImg.naturalWidth / 2, -baseImg.naturalHeight / 2);
+    if (skin) {
+        ctx.drawImage(skin.base, -skin.base.width / 2, -skin.base.height / 2);
     } else {
-        ctx.fillStyle = t.color;
-        ctx.fillRect(-t.w / 2, -t.h / 2, t.w, t.h);
-        ctx.fillStyle = 'rgba(255,255,255,0.2)';
-        ctx.beginPath();
-        ctx.moveTo(t.w / 2, -t.h / 2);
-        ctx.lineTo(t.w / 2 + 5, 0);
-        ctx.lineTo(t.w / 2, t.h / 2);
-        ctx.fill();
-        ctx.fillStyle = t.trackColor;
-        ctx.fillRect(-t.w / 2, -t.h / 2, t.w, 5);
-        ctx.fillRect(-t.w / 2, t.h / 2 - 5, t.w, 5);
+        const baseImg = assets.images.tankBase;
+        if (assets.loaded && baseImg.complete && baseImg.naturalWidth > 0) {
+            ctx.drawImage(baseImg, -baseImg.naturalWidth / 2, -baseImg.naturalHeight / 2);
+        } else {
+            ctx.fillStyle = t.color;
+            ctx.fillRect(-t.w / 2, -t.h / 2, t.w, t.h);
+            ctx.fillStyle = 'rgba(255,255,255,0.2)';
+            ctx.beginPath();
+            ctx.moveTo(t.w / 2, -t.h / 2);
+            ctx.lineTo(t.w / 2 + 5, 0);
+            ctx.lineTo(t.w / 2, t.h / 2);
+            ctx.fill();
+            ctx.fillStyle = t.trackColor;
+            ctx.fillRect(-t.w / 2, -t.h / 2, t.w, 5);
+            ctx.fillRect(-t.w / 2, t.h / 2 - 5, t.w, 5);
+        }
     }
     ctx.restore();
 
+    const ttype = t.tankType || 'medium';
+    const turretOff = ttype === 'light' ? -2 : ttype === 'heavy' ? -4 : 4;
     ctx.save();
-    ctx.translate(t.x + Math.cos(t.angle) * 4, t.y + Math.sin(t.angle) * 4);
+    ctx.translate(t.x + Math.cos(t.angle) * turretOff, t.y + Math.sin(t.angle) * turretOff);
     ctx.rotate(t.turretAngle);
 
-    const turImg = assets.images.tankTurret;
-    if (assets.loaded && turImg.complete && turImg.naturalWidth > 0) {
-        ctx.drawImage(turImg, -turImg.naturalWidth / 2, -turImg.naturalHeight / 2);
+    if (skin) {
+        ctx.drawImage(skin.turret, -skin.turret.width / 2, -skin.turret.height / 2);
     } else {
-        ctx.fillStyle = t.turretColor;
-        ctx.fillRect(10, -3, 22, 6);
-        ctx.beginPath();
-        ctx.arc(0, 0, 10, 0, Math.PI * 2);
-        ctx.fill();
+        const turImg = assets.images.tankTurret;
+        if (assets.loaded && turImg.complete && turImg.naturalWidth > 0) {
+            ctx.drawImage(turImg, -turImg.naturalWidth / 2, -turImg.naturalHeight / 2);
+        } else {
+            ctx.fillStyle = t.turretColor;
+            ctx.fillRect(10, -3, 22, 6);
+            ctx.beginPath();
+            ctx.arc(0, 0, 10, 0, Math.PI * 2);
+            ctx.fill();
+        }
     }
     ctx.restore();
 
-    if (t.hp < TANK_MAX_HP && t.hp > 0 && !t._isHull) {
+    const maxHp = t.maxHp || 100;
+    if (t.hp < maxHp && t.hp > 0 && !t._isHull) {
         ctx.fillStyle = '#333';
         ctx.fillRect(t.x - 20, t.y - 30, 40, 5);
         const isAlly = t._isAlly !== undefined ? t._isAlly : true;
         ctx.fillStyle = isAlly ? '#4CAF50' : '#f44336';
-        ctx.fillRect(t.x - 20, t.y - 30, (t.hp / TANK_MAX_HP) * 40, 5);
+        ctx.fillRect(t.x - 20, t.y - 30, (t.hp / maxHp) * 40, 5);
     }
 }
 

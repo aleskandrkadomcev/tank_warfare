@@ -3,10 +3,12 @@ import type { BotPathGrid } from '../game/pathfinding.js';
 
 export type BrickPos = { x: number; y: number };
 export type ForestPos = { x: number; y: number };
+export type StonePos = { x: number; y: number; type: number; angle: number; scale: number };
 
 export type MapData = {
     bricks: BrickPos[];
     forests: ForestPos[];
+    stones: StonePos[];
     biome: number;
     w: number;
     h: number;
@@ -82,11 +84,25 @@ export type Lobby = {
     hulls: LobbyHull[];
     /** Активные облака дыма (серверная копия для обнаружения). */
     smokes: LobbySmokeCloud[];
+    /** Таймер рассылки позиций idle-игроков (свёрнутый браузер). */
+    idleTickHandle: ReturnType<typeof setInterval> | null;
     /**
      * Память обнаружения:
      * ключ `${team}:${targetId}` -> timestamp (ms), до которого враг остаётся видим.
      */
     detectionVisibleUntil: Record<string, number>;
+    /** Таймер автоудаления лобби если остались только боты. */
+    botsOnlyCleanupHandle: ReturnType<typeof setTimeout> | null;
+    /** Статистика игроков: kills, deaths, damageDealt, damageReceived. */
+    stats: Record<string, { kills: number; deaths: number; damageDealt: number; damageReceived: number }>;
+    /** Флаг окончания раунда — боты и счёт замораживаются. */
+    roundOver: boolean;
+    /** Таймер обратного отсчёта перед стартом (null = нет отсчёта). */
+    countdownHandle: ReturnType<typeof setInterval> | null;
+    /** Текущее значение отсчёта (5..0). */
+    countdown: number;
+    /** Направление ветра (радианы). */
+    windAngle: number;
 };
 
 export const lobbies: Record<string, Lobby> = {};

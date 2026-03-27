@@ -1,9 +1,10 @@
 /**
  * Полный кадр мира: камера, слои world → tanks → effects → UI.
  */
+import { battle } from '../game/gameState.js';
 import { clampCamera } from '../game/collision.js';
 import { getShakeOffset } from '../game/cameraShake.js';
-import { DETECTION_MEMORY_MS, DETECTION_RADIUS } from '../config/constants.js';
+import { DETECTION_MEMORY_MS } from '../config/constants.js';
 import { shadeColor } from '../game/colorUtils.js';
 import { assets } from '../lib/assets.js';
 import {
@@ -22,7 +23,7 @@ import {
     drawCloudShadows,
 } from './effects.js';
 import { drawDeadHull, drawTank, drawTankShadow } from './tank.js';
-import { beginNicknameDrawPass, drawAimCrosshair, drawNickname, endNicknameDrawPass } from './uiOverlay.js';
+import { beginNicknameDrawPass, drawAimCrosshair, drawNickname, drawReloadIndicator, endNicknameDrawPass } from './uiOverlay.js';
 import {
     drawBoostIcon,
     drawBricks,
@@ -30,6 +31,8 @@ import {
     drawForests,
     drawForestShadows,
     drawMapBackground,
+    drawStoneShadows,
+    drawStones,
 } from './world.js';
 
 /**
@@ -48,6 +51,7 @@ export function drawGameFrame(ctx, view) {
         level,
         bricks,
         forests,
+        stones,
         boosts,
         tracks,
         particles,
@@ -98,7 +102,7 @@ export function drawGameFrame(ctx, view) {
     // Круг обзора игрока
     ctx.save();
     ctx.beginPath();
-    ctx.arc(tank.x, tank.y, DETECTION_RADIUS, 0, Math.PI * 2);
+    ctx.arc(tank.x, tank.y, battle.tankDef.detectionRadius, 0, Math.PI * 2);
     ctx.strokeStyle = 'rgba(255,255,255,0.26)';
     ctx.lineWidth = 2;
     ctx.stroke();
@@ -130,14 +134,16 @@ export function drawGameFrame(ctx, view) {
         const et = enemyTanks[id];
         if ((et.lastSeenAt ?? now) + DETECTION_MEMORY_MS < now) continue;
         if (et.hp > 0) {
-            const baseColor = session.playerData[id]?.color || '#f44336';
+            const pd = session.playerData[id];
+            const baseColor = pd?.color || '#f44336';
             et.color = baseColor;
+            et.camo = pd?.camo || 'none';
             if (et._renderShadeSource !== baseColor) {
                 et._renderShadeSource = baseColor;
                 et.turretColor = shadeColor(baseColor, -20);
                 et.trackColor = shadeColor(baseColor, -40);
             }
-            et._isAlly = (session.playerData[id]?.team === session.myTeam);
+            et._isAlly = (pd?.team === session.myTeam);
             drawTank(ctx, et);
         }
     }
@@ -149,8 +155,14 @@ export function drawGameFrame(ctx, view) {
     // 3. Тени кирпичей — ложатся на танк
     drawBrickShadows(ctx, bricks, level.mapWidth, level.mapHeight, view.bricksDrawRevision ?? 0);
 
+    // 3.5 Тени камней
+    drawStoneShadows(ctx, stones, level.mapWidth, level.mapHeight);
+
     // 4. Кирпичи — выше тени кирпичей
     drawBricks(ctx, bricks, level.mapWidth, level.mapHeight, view.bricksDrawRevision ?? 0);
+
+    // 5. Камни
+    drawStones(ctx, stones, level.mapWidth, level.mapHeight);
 
     drawBullets(ctx, bullets);
 
@@ -192,6 +204,13 @@ export function drawGameFrame(ctx, view) {
     }
 
     ctx.restore();
+
+    // Индикатор перезарядки вокруг курсора (экранные координаты)
+    if (tank.hp > 0) {
+        const mx = keys['MouseX'] || width / 2;
+        const my = keys['MouseY'] || height / 2;
+        drawReloadIndicator(ctx, tank, mx, my);
+    }
 
     return { camX, camY };
 }

@@ -126,18 +126,18 @@ export function separateTankFromBricks(tank, bricks, mapWidth, mapHeight, brickS
 }
 
 /** Поиск свободной точки спавна рядом с (x,y). */
-export function findSpawnSpot(x, y, tank, bricks, mapWidth, mapHeight) {
+export function findSpawnSpot(x, y, tank, bricks, mapWidth, mapHeight, stones) {
     const { hw, hh } = getTankHullHalfExtents(tank);
-    if (tankBrickCollisionIndex(x, y, tank.angle, hw, hh, bricks, mapWidth, mapHeight) === -1) {
-        return { x, y };
-    }
+    const stoneArr = stones || [];
+    const isFree = (px, py) =>
+        tankBrickCollisionIndex(px, py, tank.angle, hw, hh, bricks, mapWidth, mapHeight) === -1
+        && !tankStoneCollision(px, py, tank.angle, hw, hh, stoneArr);
+    if (isFree(x, y)) return { x, y };
     for (let r = 50; r < 300; r += 50) {
         for (let a = 0; a < Math.PI * 2; a += 0.5) {
             const nx = x + Math.cos(a) * r;
             const ny = y + Math.sin(a) * r;
-            if (tankBrickCollisionIndex(nx, ny, tank.angle, hw, hh, bricks, mapWidth, mapHeight) === -1) {
-                return { x: nx, y: ny };
-            }
+            if (isFree(nx, ny)) return { x: nx, y: ny };
         }
     }
     return { x, y };
@@ -177,6 +177,96 @@ export function obbIntersectsObb(ax, ay, aAngle, ahw, ahh, bx, by, bAngle, bhw, 
         if (aC - aR > bC + bR + SAT_EPS) return false;
     }
     return true;
+}
+
+// --- Камни (круглые хитбоксы) ---
+
+const STONE_HITBOXES = {
+    1: [{ dx: 3, dy: 25, r: 49.5 }, { dx: -7, dy: -37, r: 36.5 }],
+    2: [{ dx: 0, dy: 0, r: 73.5 }],
+    3: [{ dx: 0, dy: 0, r: 73.5 }],
+    4: [{ dx: -27, dy: 8, r: 47 }, { dx: 17, dy: 1, r: 57 }],
+    5: [{ dx: -32, dy: 0, r: 42.5 }, { dx: 40, dy: 7, r: 34.5 }],
+};
+
+/** Мировые круги хитбоксов камня с учётом поворота и масштаба. */
+export function getStoneWorldCircles(stone) {
+    const circles = STONE_HITBOXES[stone.type];
+    if (!circles) return [];
+    const cos = Math.cos(stone.angle);
+    const sin = Math.sin(stone.angle);
+    const s = stone.scale ?? 1;
+    return circles.map((c) => ({
+        cx: stone.x + (c.dx * cos - c.dy * sin) * s,
+        cy: stone.y + (c.dx * sin + c.dy * cos) * s,
+        r: c.r * s,
+    }));
+}
+
+/** OBB (танк) vs Circle. */
+export function obbIntersectsCircle(tx, ty, angle, hw, hh, cx, cy, r) {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const dx = cx - tx;
+    const dy = cy - ty;
+    const localX = dx * cos + dy * sin;
+    const localY = -dx * sin + dy * cos;
+    const closestX = Math.max(-hw, Math.min(hw, localX));
+    const closestY = Math.max(-hh, Math.min(hh, localY));
+    const distX = localX - closestX;
+    const distY = localY - closestY;
+    return distX * distX + distY * distY < r * r;
+}
+
+/** Точка внутри круга (пуля vs камень). */
+export function pointInCircle(px, py, cx, cy, r) {
+    const dx = px - cx;
+    const dy = py - cy;
+    return dx * dx + dy * dy <= r * r;
+}
+
+/** Проверяет пулю (точка) против всех камней. */
+export function checkBulletStoneCollision(bx, by, stones) {
+    for (const stone of stones) {
+        const circles = getStoneWorldCircles(stone);
+        for (const c of circles) {
+            if (pointInCircle(bx, by, c.cx, c.cy, c.r)) return true;
+        }
+    }
+    return false;
+}
+
+/** Проверяет танк (OBB) против всех камней. */
+export function tankStoneCollision(tx, ty, angle, hw, hh, stones) {
+    for (const stone of stones) {
+        const circles = getStoneWorldCircles(stone);
+        for (const c of circles) {
+            if (obbIntersectsCircle(tx, ty, angle, hw, hh, c.cx, c.cy, c.r)) return true;
+        }
+    }
+    return false;
+}
+
+/** Выталкивание танка из камней. */
+export function separateTankFromStones(tank, stones) {
+    const { hw, hh } = getTankHullHalfExtents(tank);
+    for (let iter = 0; iter < 20; iter++) {
+        let pushed = false;
+        for (const stone of stones) {
+            const circles = getStoneWorldCircles(stone);
+            for (const c of circles) {
+                if (obbIntersectsCircle(tank.x, tank.y, tank.angle, hw, hh, c.cx, c.cy, c.r)) {
+                    const dx = tank.x - c.cx;
+                    const dy = tank.y - c.cy;
+                    const d = Math.hypot(dx, dy) || 1;
+                    tank.x += (dx / d) * 1.5;
+                    tank.y += (dy / d) * 1.5;
+                    pushed = true;
+                }
+            }
+        }
+        if (!pushed) return;
+    }
 }
 
 /** Камера: центр вида в пределах карты (мировые координаты). */

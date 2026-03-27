@@ -38,3 +38,23 @@ export function drawAimCrosshair(ctx, tank) {
     ctx.lineTo(aimX, aimY + 15);
     ctx.stroke();
 }
+
+/** Рисует индикатор перезарядки вокруг курсора (в экранных координатах). */
+export function drawReloadIndicator(ctx, tank, screenX, screenY) {
+    const total = tank._reloadTotal || 1;
+    const current = tank.reload || 0;
+    const progress = current > 0 ? 1 - current / total : 1; // 0→1
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.lineWidth = 2;
+    if (progress < 1) {
+        const startAngle = -Math.PI / 2;
+        const endAngle = startAngle + progress * Math.PI * 2;
+        ctx.beginPath();
+        ctx.arc(screenX, screenY, 18, startAngle, endAngle);
+        ctx.stroke();
+    } else {
+        ctx.beginPath();
+        ctx.arc(screenX, screenY, 18, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+}

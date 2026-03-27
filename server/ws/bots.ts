@@ -1,17 +1,23 @@
+import { PLAYER_TANK_COLORS } from '#shared/colors.js';
 import { ClientMsg, ServerMsg } from '#shared/protocol.js';
 import type { WebSocket, WebSocketServer } from 'ws';
-import { BRICK_SIZE, DETECTION_RADIUS_SMALL, FOREST_SECTION_SIZE, SMOKE_CLOUD_RADIUS, TANK_MAX_HP } from '../constants.js';
+import { BRICK_SIZE, FOREST_DETECTION_RADIUS_FACTOR, FOREST_SECTION_SIZE, SMOKE_CLOUD_RADIUS, SPAWN_BOX_SIZE, SPAWN_CELL_SIZE, SPAWN_ORDER, TANK_MAX_HP } from '../constants.js';
+import { getTankDef } from '#shared/tankDefs.js';
 import { log } from '../logger.js';
 import { broadcastGame } from './broadcast.js';
 import { handleDealDamage } from './handlers/combat.js';
 import { handleState, isTargetVisibleToTeam } from './handlers/gameState.js';
 import {
+    checkBulletStoneCollision,
     clampTankCenterToMap,
     getTankHullHalfExtents,
+    lineBlockedByStones,
     obbIntersectsObb,
     pointInsideObb,
     separateTankFromBricks,
+    separateTankFromStones,
     tankBrickCollisionIndex,
+    tankStoneCollision,
 } from '../game/collision.js';
 import { findBotPath, worldToCell } from '../game/pathfinding.js';
 import { lobbies, type Lobby, type LobbyBotBullet } from './lobbyStore.js';
@@ -80,15 +86,23 @@ function getActorPosition(player: WebSocket): { x: number; y: number; hp: number
     };
 }
 
-function pickSpawnPoint(lobby: Lobby, team: number): { x: number; y: number; angle: number } {
+function pickSpawnPoint(lobby: Lobby, team: number, slotIndex?: number): { x: number; y: number; angle: number } {
     const { w, h } = getMapSize(lobby);
-    const sectorW = Math.max(150, w / 4);
-    const spawnW = Math.max(80, sectorW - 50);
-    const x =
-        team === 1
-            ? Math.random() * spawnW + 50
-            : w - (Math.random() * spawnW + 50);
-    const y = Math.random() * Math.max(1, h - 100) + 50;
+    const slot = slotIndex ?? 0;
+    const cell = SPAWN_ORDER[slot % SPAWN_ORDER.length];
+    const cellCenterX = cell.col * SPAWN_CELL_SIZE + SPAWN_CELL_SIZE / 2;
+    const cellCenterY = cell.row * SPAWN_CELL_SIZE + SPAWN_CELL_SIZE / 2;
+
+    let x: number, y: number;
+    if (team === 1) {
+        // Top-left spawn box
+        x = cellCenterX;
+        y = cellCenterY;
+    } else {
+        // Bottom-right spawn box — зеркалим
+        x = w - SPAWN_BOX_SIZE + cellCenterX;
+        y = h - SPAWN_BOX_SIZE + cellCenterY;
+    }
     return {
         x,
         y,
@@ -104,15 +118,17 @@ function makeBotActor(lobby: Lobby, team?: number, difficulty = 1): WebSocket {
         nickname: createBotName(lobby),
         team: botTeam,
         ready: true,
-        color: botTeam === 1 ? '#4CAF50' : '#f44336',
+        color: PLAYER_TANK_COLORS[Math.floor(Math.random() * PLAYER_TANK_COLORS.length)],
+        camo: Math.random() < 0.5 ? 'camouflage1' : 'none',
+        tankType: 'medium',
         isInGame: false,
         isBot: true,
-        lastPos: { x: 0, y: 0, hp: TANK_MAX_HP, team: botTeam },
+        lastPos: { x: 0, y: 0, hp: getTankDef('medium').hp, team: botTeam },
         lastPosAt: 0,
         x: 0,
         y: 0,
-        w: 75,
-        h: 45,
+        w: getTankDef('medium').w,
+        h: getTankDef('medium').h,
         angle: botTeam === 1 ? 0 : Math.PI,
         turretAngle: botTeam === 1 ? 0 : Math.PI,
         vx: 0,
@@ -136,18 +152,31 @@ function makeBotActor(lobby: Lobby, team?: number, difficulty = 1): WebSocket {
     return bot;
 }
 
+function getPlayerTeamIndex(lobby: Lobby, player: WebSocket): number {
+    let idx = 0;
+    for (const p of lobby.players) {
+        if (p.team === player.team) {
+            if (p.id === player.id) return idx;
+            idx++;
+        }
+    }
+    return 0;
+}
+
 function setBotSpawnState(bot: WebSocket, lobby: Lobby): void {
-    const spawn = pickSpawnPoint(lobby, bot.team);
+    const slot = getPlayerTeamIndex(lobby, bot);
+    const spawn = pickSpawnPoint(lobby, bot.team, slot);
     bot.x = spawn.x;
     bot.y = spawn.y;
     bot.angle = spawn.angle;
     bot.turretAngle = spawn.angle;
     bot.vx = 0;
     bot.vy = 0;
-    bot.hp = TANK_MAX_HP;
+    const botDef = getTankDef(bot.tankType);
+    bot.hp = botDef.hp;
     bot.spawnTime = Date.now();
-    bot.w = 75;
-    bot.h = 45;
+    bot.w = botDef.w;
+    bot.h = botDef.h;
     bot.lastPos = {
         x: bot.x,
         y: bot.y,
@@ -205,7 +234,7 @@ function lineCrossesSmoke(lobby: Lobby, x1: number, y1: number, x2: number, y2: 
 }
 
 /** Может ли бот видеть цель с учётом леса и дыма. */
-function botCanSeeTarget(lobby: Lobby, botX: number, botY: number, targetX: number, targetY: number, dist: number): boolean {
+function botCanSeeTarget(lobby: Lobby, botX: number, botY: number, targetX: number, targetY: number, dist: number, botTankType?: string): boolean {
     const now = Date.now();
     const forestBetween = lineCrossesForest(lobby, botX, botY, targetX, targetY);
     const botInForest = pointInsideAnyForest(lobby, botX, botY);
@@ -213,26 +242,32 @@ function botCanSeeTarget(lobby: Lobby, botX: number, botY: number, targetX: numb
     const smokeBetween = lineCrossesSmoke(lobby, botX, botY, targetX, targetY, now);
     const botInSmoke = pointInsideAnySmoke(lobby, botX, botY, now);
     const targetInSmoke = pointInsideAnySmoke(lobby, targetX, targetY, now);
+    const smallRadius = getTankDef(botTankType).detectionRadius * FOREST_DETECTION_RADIUS_FACTOR;
     if (forestBetween || botInForest || targetInForest || smokeBetween || botInSmoke || targetInSmoke) {
-        return dist <= DETECTION_RADIUS_SMALL;
+        return dist <= smallRadius;
     }
     return true;
 }
 
 function lineBlocked(lobby: Lobby, x1: number, y1: number, x2: number, y2: number): boolean {
-    if (!lobby.mapData?.bricks?.length) return false;
-    const distance = Math.hypot(x2 - x1, y2 - y1);
-    const steps = Math.max(1, Math.ceil(distance / (BRICK_SIZE / 3)));
-    for (let i = 1; i < steps; i++) {
-        const t = i / steps;
-        const px = x1 + (x2 - x1) * t;
-        const py = y1 + (y2 - y1) * t;
-        for (const brick of lobby.mapData.bricks) {
-            if (px >= brick.x && px <= brick.x + BRICK_SIZE && py >= brick.y && py <= brick.y + BRICK_SIZE) {
-                return true;
+    if (!lobby.mapData) return false;
+    const bricks = lobby.mapData.bricks;
+    if (bricks.length) {
+        const distance = Math.hypot(x2 - x1, y2 - y1);
+        const steps = Math.max(1, Math.ceil(distance / (BRICK_SIZE / 3)));
+        for (let i = 1; i < steps; i++) {
+            const t = i / steps;
+            const px = x1 + (x2 - x1) * t;
+            const py = y1 + (y2 - y1) * t;
+            for (const brick of bricks) {
+                if (px >= brick.x && px <= brick.x + BRICK_SIZE && py >= brick.y && py <= brick.y + BRICK_SIZE) {
+                    return true;
+                }
             }
         }
     }
+    const stones = lobby.mapData.stones;
+    if (stones?.length && lineBlockedByStones(x1, y1, x2, y2, stones)) return true;
     return false;
 }
 
@@ -309,14 +344,17 @@ function moveBotTowards(bot: WebSocket, goal: { x: number; y: number }, dtSec: n
     let moved = false;
     const nextX = bot.x + moveX;
     const nextY = bot.y + moveY;
-    if (tankBrickCollisionIndex(nextX, bot.y, bot.angle, hw, hh, map.bricks, map.w, map.h) === -1) {
+    const stones = map.stones || [];
+    if (tankBrickCollisionIndex(nextX, bot.y, bot.angle, hw, hh, map.bricks, map.w, map.h) === -1
+        && !tankStoneCollision(nextX, bot.y, bot.angle, hw, hh, stones)) {
         bot.x = nextX;
         bot.vx = moveX / dtSec;
         moved = true;
     } else {
         bot.vx = 0;
     }
-    if (tankBrickCollisionIndex(bot.x, nextY, bot.angle, hw, hh, map.bricks, map.w, map.h) === -1) {
+    if (tankBrickCollisionIndex(bot.x, nextY, bot.angle, hw, hh, map.bricks, map.w, map.h) === -1
+        && !tankStoneCollision(bot.x, nextY, bot.angle, hw, hh, stones)) {
         bot.y = nextY;
         bot.vy = moveY / dtSec;
         moved = true;
@@ -334,7 +372,6 @@ function moveBotTowards(bot: WebSocket, goal: { x: number; y: number }, dtSec: n
             const d = Math.hypot(dx, dy) || 1;
             h.x += (dx / d) * 4;
             h.y += (dy / d) * 4;
-            // Бот отталкивается назад
             bot.x -= (dx / d) * 2;
             bot.y -= (dy / d) * 2;
             h.x = Math.max(h.w / 2, Math.min(map.w - h.w / 2, h.x));
@@ -369,6 +406,7 @@ function moveBotTowards(bot: WebSocket, goal: { x: number; y: number }, dtSec: n
     }
 
     separateTankFromBricks(bot, map.bricks, map.w, map.h);
+    if (map.stones?.length) separateTankFromStones(bot, map.stones);
     clampTankCenterToMap(bot, map.w, map.h);
     if (!moved && bot.botBrain) bot.botBrain.stuckTicks += 1;
     if (moved && bot.botBrain) bot.botBrain.stuckTicks = 0;
@@ -391,22 +429,22 @@ function removeBotBullet(lobby: Lobby, bulletId: string): void {
 function findBulletHitTarget(lobby: Lobby, bullet: LobbyBotBullet): WebSocket | null {
     const isPlayerBullet = bullet.ownerId.startsWith('p_');
     const now = Date.now();
-    let closest: WebSocket | null = null;
-    let closestDist = Infinity;
+    let hit: WebSocket | null = null;
     lobby.players.forEach((player) => {
+        if (hit) return;
         if (player.id === bullet.ownerId || player.team === bullet.ownerTeam || !isAlivePlayer(player)) return;
         const pos = getActorPosition(player);
         if (pos.hp <= 0) return;
         // Для пуль игроков: сервер обрабатывает только попадания по НЕвидимым врагам,
         // видимых обрабатывает клиент через DEAL_DAMAGE
         if (isPlayerBullet && isTargetVisibleToTeam(lobby, player, bullet.ownerTeam, now)) return;
-        const dist = Math.hypot(pos.x - bullet.x, pos.y - bullet.y);
-        if (dist < closestDist) {
-            closest = player;
-            closestDist = dist;
+        const hw = (player.w || 75) / 2;
+        const hh = (player.h || 45) / 2;
+        if (pointInsideObb(bullet.x, bullet.y, pos.x, pos.y, player.angle, hw, hh)) {
+            hit = player;
         }
     });
-    return closestDist <= BOT_BULLET_HIT_RADIUS ? closest : null;
+    return hit;
 }
 
 function stepBotBullets(wss: WebSocketServer, lobby: Lobby, dtSec: number): void {
@@ -437,6 +475,16 @@ function stepBotBullets(wss: WebSocketServer, lobby: Lobby, dtSec: number): void
             bullet.x >= b.x && bullet.x <= b.x + BRICK_SIZE && bullet.y >= b.y && bullet.y <= b.y + BRICK_SIZE,
         );
         if (hitBrick) {
+            if (isPlayerBullet) {
+                lobby.aiBullets.splice(i, 1);
+            } else {
+                removeBotBullet(lobby, bullet.bulletId);
+            }
+            continue;
+        }
+        // Пуля попала в камень
+        const stones = lobby.mapData?.stones || [];
+        if (stones.length && checkBulletStoneCollision(bullet.x, bullet.y, stones)) {
             if (isPlayerBullet) {
                 lobby.aiBullets.splice(i, 1);
             } else {
@@ -491,7 +539,7 @@ function findTarget(lobby: Lobby, bot: WebSocket): WebSocket | null {
         const y = player.lastPos?.y ?? player.y;
         const dist = Math.hypot(x - bot.x, y - bot.y);
         if (dist > BOT_VIEW_DISTANCE) return;
-        if (!botCanSeeTarget(lobby, bot.x, bot.y, x, y, dist)) return;
+        if (!botCanSeeTarget(lobby, bot.x, bot.y, x, y, dist, bot.tankType)) return;
         if (dist < bestDist) {
             best = player;
             bestDist = dist;
@@ -502,8 +550,16 @@ function findTarget(lobby: Lobby, bot: WebSocket): WebSocket | null {
 
 function aimAndMove(bot: WebSocket, target: WebSocket | null, dtSec: number, lobby: Lobby): void {
     const goal = getMovementGoal(bot, lobby, target);
-    const targetPos = target ? getActorPosition(target) : goal;
-    bot.turretAngle = Math.atan2(targetPos.y - bot.y, targetPos.x - bot.x);
+    if (target) {
+        const tp = getActorPosition(target);
+        const dist = Math.hypot(tp.x - bot.x, tp.y - bot.y);
+        const tvx = target.vx ?? 0;
+        const tvy = target.vy ?? 0;
+        const t = dist / BOT_BULLET_SPEED;
+        bot.turretAngle = Math.atan2(tp.y + tvy * t - bot.y, tp.x + tvx * t - bot.x);
+    } else {
+        bot.turretAngle = Math.atan2(goal.y - bot.y, goal.x - bot.x);
+    }
     const moved = moveBotTowards(bot, goal, dtSec, lobby);
     if (!moved && bot.botBrain && bot.botBrain.stuckTicks >= BOT_STUCK_LIMIT) {
         bot.botBrain.wanderAngle = Math.random() * Math.PI * 2;
@@ -516,19 +572,33 @@ function maybeShoot(lobby: Lobby, bot: WebSocket, target: WebSocket | null): voi
     const brain = bot.botBrain;
     if (!brain) return;
     const difficulty = bot.botDifficulty ?? 1;
-    const distance = Math.hypot(target.lastPos.x - bot.x, target.lastPos.y - bot.y);
-    const aimError = normalizeAngle(Math.atan2(target.lastPos.y - bot.y, target.lastPos.x - bot.x) - bot.turretAngle);
-    const canSee = !lineBlocked(lobby, bot.x, bot.y, target.lastPos.x, target.lastPos.y)
-        && botCanSeeTarget(lobby, bot.x, bot.y, target.lastPos.x, target.lastPos.y, distance);
-    const shotCooldown = Math.max(400, BOT_SHOT_COOLDOWN_MS - difficulty * 120);
+    const tx = target.lastPos.x;
+    const ty = target.lastPos.y;
+    const distance = Math.hypot(tx - bot.x, ty - bot.y);
+
+    // Упреждение: предсказываем позицию врага
+    const tvx = target.vx ?? 0;
+    const tvy = target.vy ?? 0;
+    const flightTime = distance / BOT_BULLET_SPEED;
+    const leadX = tx + tvx * flightTime;
+    const leadY = ty + tvy * flightTime;
+
+    const aimError = normalizeAngle(Math.atan2(leadY - bot.y, leadX - bot.x) - bot.turretAngle);
+    const canSee = !lineBlocked(lobby, bot.x, bot.y, tx, ty)
+        && botCanSeeTarget(lobby, bot.x, bot.y, tx, ty, distance, bot.tankType);
+    const botDef = getTankDef(bot.tankType);
+    const baseReloadMs = botDef.reloadTime * 1000;
+    const shotCooldown = Math.max(400, baseReloadMs - difficulty * 120);
     if (distance > BOT_FIRE_DISTANCE || Math.abs(aimError) > BOT_AIM_THRESHOLD || !canSee) return;
     if (now - brain.lastShotAt < shotCooldown) return;
 
     const bulletId = `bot_b_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const ownerId = bot.id ?? `bot_${Date.now()}`;
-    const aimAngle = bot.turretAngle + (Math.random() - 0.5) * ((3 - (bot.botDifficulty ?? 1)) * 0.06);
+    const leadAngle = Math.atan2(leadY - bot.y, leadX - bot.x);
+    const aimAngle = leadAngle + (Math.random() - 0.5) * ((3 - difficulty) * 0.06);
     const vx = Math.cos(aimAngle) * BOT_BULLET_SPEED;
     const vy = Math.sin(aimAngle) * BOT_BULLET_SPEED;
+    const botBulletDmg = botDef.bulletDamage;
 
     brain.lastShotAt = now;
     lobby.aiBullets.push({
@@ -539,7 +609,7 @@ function maybeShoot(lobby: Lobby, bot: WebSocket, target: WebSocket | null): voi
         vy,
         ownerId,
         ownerTeam: bot.team,
-        damage: 35,
+        damage: botBulletDmg,
         createdAt: now,
         ttl: BOT_BULLET_TTL,
     });
@@ -552,9 +622,10 @@ function maybeShoot(lobby: Lobby, bot: WebSocket, target: WebSocket | null): voi
             y: bot.y,
             vx,
             vy,
-            damage: 35,
+            damage: botBulletDmg,
             ownerId,
             ownerTeam: bot.team,
+            tankType: bot.tankType || 'medium',
         },
         bot,
     );
@@ -678,9 +749,22 @@ export function initBotsForStart(lobby: Lobby): void {
 
 export function onLobbyCleanup(lobby: Lobby): void {
     stopAiTick(lobby);
+    if (lobby.idleTickHandle) { clearInterval(lobby.idleTickHandle); lobby.idleTickHandle = null; }
+    if (lobby.botsOnlyCleanupHandle) { clearTimeout(lobby.botsOnlyCleanupHandle); lobby.botsOnlyCleanupHandle = null; }
     lobby.aiBullets = [];
 }
 
 export function shouldDeleteLobbyAfterClose(lobby: Lobby): boolean {
-    return !lobby.players.some((p) => !p.isBot);
+    // Есть хотя бы один подключённый (не бот, не призрак) игрок?
+    const hasConnected = lobby.players.some((p) => !p.isBot && !p.disconnectedAt);
+    if (hasConnected) return false;
+    // Если в игре и есть призраки — даём 60 сек на реконнект
+    if (lobby.gameStarted) {
+        const hasGhost = lobby.players.some((p) => !p.isBot && p.disconnectedAt);
+        if (hasGhost) {
+            const oldest = Math.min(...lobby.players.filter((p) => !p.isBot && p.disconnectedAt).map((p) => p.disconnectedAt!));
+            if (Date.now() - oldest < 60_000) return false;
+        }
+    }
+    return true;
 }

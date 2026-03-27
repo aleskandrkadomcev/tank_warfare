@@ -8,18 +8,45 @@ export const SPAWN_IMMUNITY_TIME = 3.0;
 export const DETECTION_RADIUS = 900;
 /** Время "памяти" обнаружения после потери линии видимости. */
 export const DETECTION_MEMORY_MS = 2000;
-/** Множитель радиуса для леса (резерв под будущую механику). */
-export const FOREST_DETECTION_RADIUS_FACTOR = 0.5;
+/** Множитель радиуса для леса/дыма (вторичный круг обзора). */
+export const FOREST_DETECTION_RADIUS_FACTOR = 0.7;
 /** Эффективный «малый» радиус обнаружения (лес, дым, сквозь дым). */
 export const DETECTION_RADIUS_SMALL = DETECTION_RADIUS * FOREST_DETECTION_RADIUS_FACTOR;
 /**
  * Радиус облака дыма на сервере (примерно как разлёт частиц в createSmokeCloud: до ~150 + размер).
  * Линия обзора, пересекающая диск, считается заслонённой дымом.
  */
-export const SMOKE_CLOUD_RADIUS = 200;
+export const SMOKE_CLOUD_RADIUS = 170;
 /** Время жизни облака дыма (синхронно с клиентом simulation.js: 10 с). */
 export const SMOKE_LIFETIME_MS = 10_000;
 /** Размер спрайта секции леса (PNG). */
 export const FOREST_SECTION_SIZE = 97;
 /** Шаг повторения секций леса (перекрытие 8px). */
 export const FOREST_SECTION_STEP = 89;
+
+/** Размер спавн-бокса каждой команды (400×400). */
+export const SPAWN_BOX_SIZE = 400;
+/** Размер одной ячейки спавна (100×100). */
+export const SPAWN_CELL_SIZE = 100;
+/**
+ * Порядок спавн-ячеек (индекс игрока → позиция в сетке 4×4).
+ * Нумерация: row 0–3, col 0–3 (сверху-вниз, слева-направо).
+ */
+export const SPAWN_ORDER: { row: number; col: number }[] = [
+    { row: 1, col: 1 }, // 1
+    { row: 2, col: 2 }, // 2
+    { row: 3, col: 1 }, // 3
+    { row: 1, col: 3 }, // 4
+    { row: 0, col: 2 }, // 5
+    { row: 3, col: 3 }, // 6
+    { row: 2, col: 0 }, // 7
+    { row: 0, col: 0 }, // 8
+    { row: 1, col: 2 }, // 9
+    { row: 2, col: 3 }, // 10
+    { row: 3, col: 2 }, // 11
+    { row: 0, col: 1 }, // 12
+    { row: 2, col: 1 }, // 13
+    { row: 1, col: 0 }, // 14
+    { row: 3, col: 0 }, // 15
+    { row: 0, col: 3 }, // 16
+];

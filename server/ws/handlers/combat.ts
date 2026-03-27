@@ -1,9 +1,13 @@
 import { ServerMsg } from '#shared/protocol.js';
 import type { WebSocket, WebSocketServer } from 'ws';
-import { COLLISION_DAMAGE } from '../../constants.js';
+import { getTankDef } from '#shared/tankDefs.js';
 import { broadcastGame } from '../broadcast.js';
 import { lobbies } from '../lobbyStore.js';
 import { handleDeath } from './gameState.js';
+
+function ensureStats(lobby: (typeof lobbies)[string], id: string) {
+    if (!lobby.stats[id]) lobby.stats[id] = { kills: 0, deaths: 0, damageDealt: 0, damageReceived: 0 };
+}
 
 export function handleBullet(_wss: WebSocketServer, ws: WebSocket, data: Record<string, unknown>): void {
     const lobby = ws.lobbyId ? lobbies[ws.lobbyId] : undefined;
@@ -22,6 +26,7 @@ export function handleBullet(_wss: WebSocketServer, ws: WebSocket, data: Record<
                 damage,
                 ownerId: ws.id,
                 ownerTeam: ws.team,
+                tankType: ws.tankType || 'medium',
             },
             ws,
         );
@@ -70,6 +75,13 @@ export function handleDealDamage(_wss: WebSocketServer, ws: WebSocket, data: Rec
             const nextHp = Math.max(0, currentHp - damage);
             if (target.lastPos) target.lastPos.hp = nextHp;
             if (target.isBot) target.hp = nextHp;
+            // Трекинг урона
+            const actualDamage = Math.min(damage, currentHp);
+            ensureStats(lobby, ws.id!);
+            ensureStats(lobby, target.id!);
+            lobby.stats[ws.id!].damageDealt += actualDamage;
+            lobby.stats[target.id!].damageReceived += actualDamage;
+            target._lastAttackerId = ws.id ?? undefined;
             target.send(
                 JSON.stringify({
                     type: ServerMsg.BULLET_HIT,
@@ -98,12 +110,21 @@ export function handleCollisionDamage(_wss: WebSocketServer, ws: WebSocket, data
     if (!data.otherId) return;
     const lobby = ws.lobbyId ? lobbies[ws.lobbyId] : undefined;
     if (lobby?.gameStarted) {
+        const wsDmg = getTankDef(ws.tankType).collisionDamage;
         if (ws.readyState === 1) {
-            ws.send(JSON.stringify({ type: ServerMsg.COLLISION_HIT, damage: COLLISION_DAMAGE }));
+            ws.send(JSON.stringify({ type: ServerMsg.COLLISION_HIT, damage: wsDmg }));
         }
         const other = lobby.players.find((p) => p.id === data.otherId);
+        const otherDmg = other ? getTankDef(other.tankType).collisionDamage : wsDmg;
         if (other && other.readyState === 1) {
-            other.send(JSON.stringify({ type: ServerMsg.COLLISION_HIT, damage: COLLISION_DAMAGE }));
+            other.send(JSON.stringify({ type: ServerMsg.COLLISION_HIT, damage: otherDmg }));
+        }
+        // Трекинг урона от столкновения
+        ensureStats(lobby, ws.id!);
+        lobby.stats[ws.id!].damageReceived += wsDmg;
+        if (other) {
+            ensureStats(lobby, other.id!);
+            lobby.stats[other.id!].damageReceived += otherDmg;
         }
     }
 }

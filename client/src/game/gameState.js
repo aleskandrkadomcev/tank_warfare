@@ -2,12 +2,14 @@
  * Состояние клиента: мир (массивы), бой, сессия лобби, параметры карты.
  * Импортируется там, где нужны ссылки на одни и те же объекты.
  */
-import { MAP_HEIGHT, MAP_WIDTH, TANK_MAX_HP } from '../config/constants.js';
+import { MAP_HEIGHT, MAP_WIDTH } from '../config/constants.js';
+import { getTankDef } from '../../../shared/dist/tankDefs.js';
 
 /** Сущности на карте и эффекты (2.2a). */
 export const world = {
     bricks: [],
     forests: [],
+    stones: [],
     /** Счётчик для инвалидации offscreen-кэша кирпичей в `drawBricks`. */
     bricksDrawRevision: 0,
     bullets: [],
@@ -27,8 +29,12 @@ export function bumpBricksDrawRevision() {
     world.bricksDrawRevision++;
 }
 
+const defaultDef = getTankDef('medium');
+
 /** Локальный танк игрока, враги, счёт (2.2b). */
 export const battle = {
+    /** Определение текущего типа танка. */
+    tankDef: defaultDef,
     tank: {
         x: 100,
         y: 100,
@@ -36,20 +42,22 @@ export const battle = {
         turretAngle: 0,
         vx: 0,
         vy: 0,
-        hp: TANK_MAX_HP,
+        hp: defaultDef.hp,
         reload: 0,
-        w: 75,
-        h: 45,
+        w: defaultDef.w,
+        h: defaultDef.h,
         color: '#4CAF50',
         turretColor: '#388E3C',
         trackColor: '#1B5E20',
+        camo: 'none',
+        tankType: 'medium',
         damageBoostTimer: 0,
         speedBoostTimer: 0,
         collisionTimer: 0,
-        smokeCount: 0,
-        mineCount: 0,
-        rocketCount: 0,
-        healCount: 1,
+        smokeCount: defaultDef.startInventory.smokeCount,
+        mineCount: defaultDef.startInventory.mineCount,
+        rocketCount: defaultDef.startInventory.rocketCount,
+        healCount: defaultDef.startInventory.healCount,
         healCooldown: 0,
         aimDist: 200,
         isDead: false,
@@ -60,6 +68,7 @@ export const battle = {
     enemyScore: 0,
     scoreLimit: 5,
     bulletCounter: 0,
+    liveStats: [],
 };
 
 /** Лобби, сеть, движки звука (2.2c). */
@@ -69,11 +78,15 @@ export const session = {
     myId: null,
     myTeam: 1,
     myColor: '#4CAF50',
+    myCamo: 'none',
+    myTankType: 'medium',
     playerData: {},
     myNickname: 'Игрок',
     currentLobbyId: null,
     myEngine: null,
     enemyEngine: null,
+    spawnSlot: 0,
+    roundOver: false,
 };
 
 /** Размеры и биом текущей карты + вспомогательный счётчик для следов. */
@@ -82,4 +95,8 @@ export const level = {
     mapHeight: MAP_HEIGHT,
     biome: 0,
     trackSpawnDist: 0,
+    /** Направление ветра (радианы), задаётся сервером. */
+    windAngle: 0,
+    /** Скорость ветра для дыма/частиц (px/сек). */
+    windSpeed: 20,
 };

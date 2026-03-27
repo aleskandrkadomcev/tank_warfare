@@ -2,6 +2,7 @@
  * Следы, частицы, мины, снаряды, дым, взрывы, ракеты (фаза 3.3).
  */
 import { BULLET_DAMAGE_BASE } from '../config/constants.js';
+import { level } from '../game/gameState.js';
 import { assets } from '../lib/assets.js';
 
 /** Не рисуем частицы/дым с пренебрежимой непрозрачностью — экономия beginPath/arc/fill. */
@@ -59,7 +60,13 @@ export function drawTracks(ctx, tracks, now, viewWorld, mapWidth, mapHeight) {
         tc.save();
         tc.translate(t.x, t.y);
         tc.rotate(t.angle);
-        tc.fillRect(-8, -3, 16, 6);
+        if (t.tankType === 'heavy') {
+            tc.fillRect(-8, -3.75, 16, 7.5);
+        } else if (t.tankType === 'light') {
+            tc.fillRect(-7, -2.5, 14, 5);
+        } else {
+            tc.fillRect(-8, -3, 16, 6);
+        }
         tc.restore();
     }
     if (hasNew) tc.globalAlpha = 1;
@@ -161,21 +168,11 @@ export function drawMines(ctx, mines, myTeam) {
 }
 
 export function drawBullets(ctx, bullets) {
+    ctx.fillStyle = '#000';
     bullets.forEach((b) => {
-        if (b.damage > BULLET_DAMAGE_BASE) {
-            ctx.shadowColor = '#00ff00';
-            ctx.shadowBlur = 10;
-            ctx.fillStyle = '#000';
-            ctx.beginPath();
-            ctx.arc(b.x, b.y, 5, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.shadowBlur = 0;
-        } else {
-            ctx.fillStyle = '#000';
-            ctx.beginPath();
-            ctx.arc(b.x, b.y, 4, 0, Math.PI * 2);
-            ctx.fill();
-        }
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, 4, 0, Math.PI * 2);
+        ctx.fill();
     });
 }
 
@@ -238,7 +235,7 @@ export function drawDarkSmokeParticles(ctx, particles) {
         if (p.type === 'dark_smoke') {
             const life = Math.max(0, p.life);
             if (life < PARTICLE_VIS_EPS) continue;
-            ctx.globalAlpha = life;
+            ctx.globalAlpha = Math.min(1, life / 4) * 0.7;
             if (useSprite) {
                 const scale = p.spriteScale || 1;
                 const w = smokeBlackImg.naturalWidth * scale;
@@ -308,7 +305,6 @@ export function drawRockets(ctx, rockets, onRocketSmoke, now) {
 
 /* ── Тень от облаков ── */
 /** Рандомное направление движения (выбирается один раз). */
-let _cloudAngle = Math.random() * Math.PI * 2;
 const CLOUD_SPEED = 60; // px/сек
 const CLOUD_SCALE = 5;  // растянуть текстуру в 5 раз
 let _cloudOffsetX = 0;
@@ -323,8 +319,8 @@ export function drawCloudShadows(ctx, now, viewWorld) {
     if (_cloudLastTime === 0) _cloudLastTime = now;
     const elapsed = (now - _cloudLastTime) / 1000;
     _cloudLastTime = now;
-    _cloudOffsetX += Math.cos(_cloudAngle) * CLOUD_SPEED * elapsed;
-    _cloudOffsetY += Math.sin(_cloudAngle) * CLOUD_SPEED * elapsed;
+    _cloudOffsetX += Math.cos(level.windAngle) * CLOUD_SPEED * elapsed;
+    _cloudOffsetY += Math.sin(level.windAngle) * CLOUD_SPEED * elapsed;
 
     const tw = img.naturalWidth * CLOUD_SCALE;
     const th = img.naturalHeight * CLOUD_SCALE;

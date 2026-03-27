@@ -3,10 +3,11 @@
  * Симуляция — simulation.js; коллизии — collision.js; эффекты — effects.js; рендер — render/*; ввод — input/keyboard.js.
  */
 import { ClientMsg } from '../../../shared/dist/protocol.js';
+import { getTankDef } from '../../../shared/dist/tankDefs.js';
 import { SPAWN_IMMUNITY_TIME, TANK_COLORS, TANK_MAX_HP, VIRTUAL_HEIGHT } from '../config/constants.js';
 import { getWebSocketUrl } from '../config/env.js';
 import { attachGameInput, gameKeys } from '../input/keyboard.js';
-import { playSound_StartMusic, updateVolume } from '../lib/audio.js';
+import { playSound_StartMusic, playUISound, updateVolume } from '../lib/audio.js';
 import {
     configureServerMessages,
     gameMessageHooks,
@@ -20,10 +21,14 @@ import { shadeColor } from './colorUtils.js';
 import { addTrack, createExplosion, createSmokeCloud, spawnParticles } from './effects.js';
 import { battle, level, session, world } from './gameState.js';
 import { runSimulation } from './simulation.js';
+import cursorUrl from '../game-assets/images/cursor.png?url';
+import { assets } from '../lib/assets.js';
+import { getTankSkin } from '../render/tankSkin.js';
 
 const {
     bricks,
     forests,
+    stones,
     bullets,
     particles,
     tracks,
@@ -68,33 +73,166 @@ function getNickname() {
     return sanitize(nick, 12);
 }
 function sanitize(str, maxLen) {
-    return str.substring(0, maxLen).replace(/[^a-zA-Z0-9_а-яА-Я]/g, '') || 'Игрок';
+    return str.substring(0, maxLen).replace(/[^a-zA-Z0-9_а-яА-ЯёЁ]/g, '') || 'Игрок';
+}
+function setupUISounds() {
+    const isInteractive = (el) => el.matches('button, select, option, .color-swatch, .color-selected, .join-btn, .dd-selected, .dd-item, input[type="text"]');
+    document.addEventListener('mouseover', (e) => {
+        if (isInteractive(e.target) && e.target.closest('#menu, #lobby-wrapper')) {
+            playUISound(assets.sounds.click1, 0.4);
+        }
+    }, { passive: true });
+    document.addEventListener('mousedown', (e) => {
+        if (isInteractive(e.target) && e.target.closest('#menu, #lobby-wrapper')) {
+            playUISound(assets.sounds.click2, 0.6);
+        }
+    }, { passive: true });
+    // Звук при смене варианта в select (камуфляж, тип танка, размер карты и т.д.)
+    document.addEventListener('change', (e) => {
+        if (e.target.matches('select') && e.target.closest('#menu, #lobby-wrapper')) {
+            playUISound(assets.sounds.click2, 0.6);
+        }
+    }, { passive: true });
 }
 window.addEventListener('load', () => {
     const nickInput = document.getElementById('nicknameInput');
     if (nickInput) nickInput.value = sessionStorage.getItem('tank_nickname_session') || '';
     initColorPicker();
     updateLobbyListUI([]);
+    setupUISounds();
     connect();
 });
 function initColorPicker() {
-    const picker = document.getElementById('colorPicker');
-    picker.innerHTML = '';
+    const container = document.getElementById('colorSelect');
+    container.innerHTML = '';
+    const selected = document.createElement('div');
+    selected.className = 'color-selected';
+    selected.style.background = session.myColor;
+    container.appendChild(selected);
+    const dropdown = document.createElement('div');
+    dropdown.className = 'color-dropdown';
     TANK_COLORS.forEach((color) => {
-        const btn = document.createElement('div');
-        btn.className = 'color-btn' + (color === session.myColor ? ' selected' : '');
-        btn.style.background = color;
-        btn.onclick = (ev) => selectColor(color, ev);
-        picker.appendChild(btn);
+        const swatch = document.createElement('div');
+        swatch.className = 'color-swatch';
+        swatch.style.background = color;
+        if (color === session.myColor) swatch.classList.add('active');
+        swatch.onclick = (e) => {
+            e.stopPropagation();
+            session.myColor = color;
+            selected.style.background = color;
+            dropdown.querySelectorAll('.color-swatch').forEach((s) => s.classList.remove('active'));
+            swatch.classList.add('active');
+            dropdown.style.display = 'none';
+            if (isGameSocketOpen() && session.currentLobbyId) {
+                sendGameMessage({ type: ClientMsg.UPDATE_PLAYER, color, camo: session.myCamo });
+            }
+            drawTankPreview();
+        };
+        dropdown.appendChild(swatch);
     });
+    container.appendChild(dropdown);
+    selected.onclick = (e) => {
+        e.stopPropagation();
+        dropdown.style.display = dropdown.style.display === 'grid' ? 'none' : 'grid';
+    };
+    document.addEventListener('click', () => { dropdown.style.display = 'none'; });
+
+    // Кастомный dropdown для камуфляжа
+    buildCustomDropdown('camoSelect', [
+        { value: 'none', label: 'Без камуфляжа' },
+        { value: 'camouflage1', label: 'Камуфляж 1' },
+    ], session.myCamo || 'none', (val) => {
+        session.myCamo = val;
+        if (isGameSocketOpen() && session.currentLobbyId) {
+            sendGameMessage({ type: ClientMsg.UPDATE_PLAYER, color: session.myColor, camo: session.myCamo, tankType: session.myTankType });
+        }
+        drawTankPreview();
+    });
+
+    // Кастомный dropdown для типа танка
+    buildCustomDropdown('tankTypeSelect', [
+        { value: 'light', label: 'Лёгкий' },
+        { value: 'medium', label: 'Средний' },
+        { value: 'heavy', label: 'Тяжёлый' },
+    ], session.myTankType || 'medium', (val) => {
+        session.myTankType = val;
+        battle.tankDef = getTankDef(session.myTankType);
+        if (isGameSocketOpen() && session.currentLobbyId) {
+            sendGameMessage({ type: ClientMsg.UPDATE_PLAYER, color: session.myColor, camo: session.myCamo, tankType: session.myTankType });
+        }
+        drawTankPreview();
+    });
+
+    drawTankPreview();
 }
-function selectColor(color, ev) {
-    session.myColor = color;
-    document.querySelectorAll('.color-btn').forEach((b) => b.classList.remove('selected'));
-    const el = ev?.currentTarget;
-    if (el) el.classList.add('selected');
-    if (isGameSocketOpen() && session.currentLobbyId) {
-        sendGameMessage({ type: ClientMsg.UPDATE_PLAYER, color });
+
+function buildCustomDropdown(containerId, options, currentValue, onChange) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = '';
+    const sel = document.createElement('div');
+    sel.className = 'dd-selected';
+    const currentOpt = options.find((o) => o.value === currentValue) || options[0];
+    sel.textContent = currentOpt.label;
+    container.appendChild(sel);
+
+    const list = document.createElement('div');
+    list.className = 'dd-list';
+    options.forEach((opt) => {
+        const item = document.createElement('div');
+        item.className = 'dd-item';
+        if (opt.value === currentValue) item.classList.add('active');
+        item.textContent = opt.label;
+        item.addEventListener('mouseenter', () => playUISound(assets.sounds.click1, 0.4), { passive: true });
+        item.onclick = (e) => {
+            e.stopPropagation();
+            playUISound(assets.sounds.click2, 0.6);
+            sel.textContent = opt.label;
+            list.querySelectorAll('.dd-item').forEach((i) => i.classList.remove('active'));
+            item.classList.add('active');
+            list.style.display = 'none';
+            onChange(opt.value);
+        };
+        list.appendChild(item);
+    });
+    container.appendChild(list);
+    sel.onclick = (e) => {
+        e.stopPropagation();
+        playUISound(assets.sounds.click2, 0.6);
+        // Закрыть все другие открытые dropdown
+        document.querySelectorAll('.dd-list').forEach((l) => { if (l !== list) l.style.display = 'none'; });
+        list.style.display = list.style.display === 'block' ? 'none' : 'block';
+    };
+    document.addEventListener('click', () => { list.style.display = 'none'; });
+}
+
+function drawTankPreview() {
+    const canvas = document.getElementById('tankPreview');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const skin = getTankSkin(session.myColor, session.myCamo || 'none', session.myTankType || 'medium');
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    const ttype = session.myTankType || 'medium';
+    // Смещение башни вдоль корпуса (танк смотрит вправо → angle=0 → cos=1)
+    const turretOff = ttype === 'light' ? -2 : ttype === 'heavy' ? -4 : 4;
+
+    if (skin) {
+        // Корпус
+        ctx.drawImage(skin.base, cx - 5 - skin.base.width / 2, cy - skin.base.height / 2);
+        // Башня
+        ctx.drawImage(skin.turret, cx - 5 + turretOff - skin.turret.width / 2, cy - skin.turret.height / 2);
+    } else {
+        // Fallback — простой прямоугольник
+        ctx.fillStyle = session.myColor;
+        ctx.fillRect(cx - 5 - 37, cy - 22, 75, 45);
+        ctx.fillStyle = shadeColor(session.myColor, -20);
+        ctx.fillRect(cx - 5 + turretOff + 10, cy - 3, 22, 6);
+        ctx.beginPath();
+        ctx.arc(cx - 5 + turretOff, cy, 10, 0, Math.PI * 2);
+        ctx.fill();
     }
 }
 
@@ -121,6 +259,7 @@ function createLobby() {
                 nickname: nick,
                 lobbyName: name,
                 color: session.myColor,
+                camo: session.myCamo || 'none',
                 mapSize: document.getElementById('mapSizeSelect')?.value || 'small',
                 scoreLimit: parseInt(document.getElementById('scoreLimitSelect')?.value || '5', 10),
             }),
@@ -140,6 +279,7 @@ function joinLobbyByCode() {
                 lobbyId: code,
                 nickname: nick,
                 color: session.myColor,
+                camo: session.myCamo || 'none',
             }),
         300,
     );
@@ -155,13 +295,28 @@ function joinLobby(id) {
                 lobbyId: id,
                 nickname: nick,
                 color: session.myColor,
+                camo: session.myCamo || 'none',
+            }),
+        300,
+    );
+}
+function rejoinLobby(id) {
+    const nick = getNickname();
+    session.myNickname = nick;
+    connect();
+    setTimeout(
+        () =>
+            sendGameMessage({
+                type: ClientMsg.REJOIN_LOBBY,
+                lobbyId: id,
+                nickname: nick,
             }),
         300,
     );
 }
 function showLobby(id, name, isHost) {
     document.getElementById('menu').style.display = 'none';
-    document.getElementById('lobby').style.display = 'block';
+    document.getElementById('lobby-wrapper').style.display = 'flex';
     document.getElementById('roomCodeDisplay').innerText = id;
     document.getElementById('lobbyNameDisplay').innerText = name || 'Лобби';
     document.getElementById('btnStart').style.display = isHost ? 'inline-block' : 'none';
@@ -198,8 +353,12 @@ function updateLobbyListUI(lobbies) {
     }
     list.innerHTML = lobbies
         .map(
-            (l) =>
-                `<div class="lobby-item"><span class="lobby-name">${l.name}</span><span class="lobby-players">${l.players}/${l.max}</span><button type="button" class="join-btn" data-lobby-id="${escapeLobbyIdAttr(l.id)}">▶</button></div>`,
+            (l) => {
+                if (l.inGame) {
+                    return `<div class="lobby-item"><span class="lobby-name">${l.name} <small style="color:#ff9800">[В ИГРЕ]</small></span><span class="lobby-players">${l.players}/${l.max}</span><button type="button" class="join-btn" data-lobby-id="${escapeLobbyIdAttr(l.id)}" data-rejoin="1" style="background:#ff9800">⟳</button></div>`;
+                }
+                return `<div class="lobby-item"><span class="lobby-name">${l.name}</span><span class="lobby-players">${l.players}/${l.max}</span><button type="button" class="join-btn" data-lobby-id="${escapeLobbyIdAttr(l.id)}">▶</button></div>`;
+            },
         )
         .join('');
 }
@@ -208,12 +367,38 @@ function updateLobbyPlayers(players) {
         t2 = document.getElementById('team2-list');
     t1.innerHTML = '';
     t2.innerHTML = '';
+
+    // Drop-зоны для drag-and-drop (хост перетаскивает игроков)
+    const setupDropZone = (container, team) => {
+        container.ondragover = (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; };
+        container.ondragenter = () => container.classList.add('drag-over');
+        container.ondragleave = (e) => { if (!container.contains(e.relatedTarget)) container.classList.remove('drag-over'); };
+        container.ondrop = (e) => {
+            e.preventDefault();
+            container.classList.remove('drag-over');
+            const targetId = e.dataTransfer.getData('text/plain');
+            if (targetId) sendGameMessage({ type: ClientMsg.CHANGE_TEAM, team, targetId });
+        };
+    };
+    setupDropZone(t1, 1);
+    setupDropZone(t2, 2);
+
     players.forEach((p) => {
         const div = document.createElement('div');
         div.className = 'player-slot team' + p.team;
-        div.innerHTML = `<div class="player-color" style="background:${p.color}"></div><strong>${p.nick}</strong>${p.isHost ? ' 👑' : ''}${p.isBot ? ' 🤖' : ''}`;
+        const readyIcon = p.isBot ? '' : `<span class="ready-icon">${p.ready ? '✅' : '❌'}</span>`;
+        div.innerHTML = `${readyIcon}<strong>${p.nick}</strong>${p.isHost ? ' 👑' : ''}${p.isBot ? ' 🤖' : ''}`;
+        // Хост может перетаскивать любого игрока
+        if (session.isHost) {
+            div.draggable = true;
+            div.style.cursor = 'grab';
+            div.ondragstart = (e) => {
+                e.dataTransfer.setData('text/plain', p.id);
+                e.dataTransfer.effectAllowed = 'move';
+            };
+        }
         (p.team === 1 ? t1 : t2).appendChild(div);
-        session.playerData[p.id] = { nick: p.nick, team: p.team, color: p.color, isBot: Boolean(p.isBot) };
+        session.playerData[p.id] = { nick: p.nick, team: p.team, color: p.color, camo: p.camo || 'none', isBot: Boolean(p.isBot) };
         if (p.id === session.myId) {
             session.myTeam = p.team;
             session.myColor = p.color;
@@ -230,6 +415,15 @@ function startGame() {
     sendGameMessage({ type: ClientMsg.START_GAME, mapSize: document.getElementById('mapSizeSelect')?.value || 'small' });
 }
 
+function sendChatMessage() {
+    const input = document.getElementById('lobby-chat-input');
+    if (!input) return;
+    const text = input.value.trim();
+    if (!text) return;
+    sendGameMessage({ type: ClientMsg.LOBBY_CHAT, text });
+    input.value = '';
+}
+
 function addBot() {
     sendGameMessage({ type: ClientMsg.ADD_BOT });
 }
@@ -240,7 +434,10 @@ function removeBot() {
 
 function startGameClient() {
     boostPanelRenderSig = '';
-    document.getElementById('lobby').style.display = 'none';
+    document.getElementById('menu').style.display = 'none';
+    document.getElementById('lobby-wrapper').style.display = 'none';
+    const chatLog = document.getElementById('lobby-chat-log');
+    if (chatLog) chatLog.innerHTML = '';
     document.getElementById('ui-game').style.display = 'block';
     document.getElementById('score-board').style.display = 'block';
     document.getElementById('volume-control').style.display = 'block';
@@ -248,13 +445,15 @@ function startGameClient() {
     document.getElementById('victory-screen').style.display = 'none';
     document.getElementById('death-screen').style.display = 'none';
     resize();
+    document.body.style.cursor = `url('${cursorUrl}') 15 20, crosshair`;
     session.gameStarted = true;
     lastTime = performance.now();
     fpsSmoothed = 0;
     const fpsVal = document.getElementById('fps-value');
     if (fpsVal) fpsVal.textContent = '—';
+    updateUI();
     playSound_StartMusic();
-    setTimeout(spawnMyTank, 500);
+    spawnMyTank();
     requestAnimationFrame(loop);
 }
 
@@ -265,6 +464,10 @@ function resetMatch() {
     updateUI();
     document.getElementById('victory-screen').style.display = 'none';
     document.getElementById('death-screen').style.display = 'none';
+    const endOverlay = document.getElementById('endgame-overlay');
+    if (endOverlay) endOverlay.style.display = 'none';
+    const canvasEl = document.getElementById('gameCanvas');
+    if (canvasEl) canvasEl.classList.remove('endgame-filter');
     tracks.length = 0;
     resetTrackCanvas();
     particles.length = 0;
@@ -275,23 +478,22 @@ function resetMatch() {
     explosions.length = 0;
     hulls.length = 0;
     explosionMarks.length = 0;
-    tank.hp = TANK_MAX_HP;
+    const def = battle.tankDef;
+    tank.hp = def.hp;
+    tank.maxHp = def.hp;
     tank.isDead = false;
     tank.damageBoostTimer = 0;
     tank.speedBoostTimer = 0;
     tank.vx = 0;
     tank.vy = 0;
     tank.collisionTimer = 0;
-    tank.smokeCount = 0;
-    tank.mineCount = 0;
-    tank.rocketCount = 0;
-    tank.healCount = 1;
+    tank.smokeCount = def.startInventory.smokeCount;
+    tank.mineCount = def.startInventory.mineCount;
+    tank.rocketCount = def.startInventory.rocketCount;
+    tank.healCount = def.startInventory.healCount;
     tank.healCooldown = 0;
     for (const id in enemyTanks) {
-        enemyTanks[id].hp = TANK_MAX_HP;
-        enemyTanks[id].vx = 0;
-        enemyTanks[id].vy = 0;
-        enemyTanks[id].spawnImmunityTimer = SPAWN_IMMUNITY_TIME;
+        delete enemyTanks[id];
     }
     session.gameStarted = true;
     playSound_StartMusic();
@@ -300,40 +502,56 @@ function resetMatch() {
 }
 
 function spawnMyTank() {
+    const def = battle.tankDef;
     boostPanelRenderSig = '';
     bullets.length = 0;
-    tank.hp = TANK_MAX_HP;
+    tank.hp = def.hp;
+    tank.maxHp = def.hp;
     tank.isDead = false;
     tank.reload = 0;
     tank.vx = 0;
     tank.vy = 0;
+    tank.w = def.w;
+    tank.h = def.h;
+    tank.tankType = def.type;
     tank.damageBoostTimer = 0;
     tank.speedBoostTimer = 0;
     tank.collisionTimer = 0;
-    tank.smokeCount = 0;
-    tank.mineCount = 0;
-    tank.rocketCount = 0;
-    tank.healCount = 1;
+    tank.smokeCount = def.startInventory.smokeCount;
+    tank.mineCount = def.startInventory.mineCount;
+    tank.rocketCount = def.startInventory.rocketCount;
+    tank.healCount = def.startInventory.healCount;
     tank.healCooldown = 0;
     tank.spawnImmunityTimer = SPAWN_IMMUNITY_TIME;
     document.getElementById('death-screen').style.display = 'none';
     updateInventoryUI();
     tank.color = session.myColor;
+    tank.camo = session.myCamo || 'none';
     tank.turretColor = shadeColor(session.myColor, -20);
     tank.trackColor = shadeColor(session.myColor, -40);
-    const sectorW = level.mapWidth / 4,
-        spawnW = sectorW - 50;
+    const SPAWN_BOX = 400;
+    const CELL = 100;
+    const SPAWN_ORDER = [
+        { row: 1, col: 1 }, { row: 2, col: 2 }, { row: 3, col: 1 }, { row: 1, col: 3 },
+        { row: 0, col: 2 }, { row: 3, col: 3 }, { row: 2, col: 0 }, { row: 0, col: 0 },
+        { row: 1, col: 2 }, { row: 2, col: 3 }, { row: 3, col: 2 }, { row: 0, col: 1 },
+        { row: 2, col: 1 }, { row: 1, col: 0 }, { row: 3, col: 0 }, { row: 0, col: 3 },
+    ];
+    const slot = session.spawnSlot % SPAWN_ORDER.length;
+    const cell = SPAWN_ORDER[slot];
+    const cx = cell.col * CELL + CELL / 2;
+    const cy = cell.row * CELL + CELL / 2;
     let sx, sy;
     if (session.myTeam === 1) {
-        sx = Math.random() * spawnW + 50;
-        sy = Math.random() * (level.mapHeight - 100) + 50;
+        sx = cx;
+        sy = cy;
         tank.angle = 0;
     } else {
-        sx = level.mapWidth - (Math.random() * spawnW + 50);
-        sy = Math.random() * (level.mapHeight - 100) + 50;
+        sx = level.mapWidth - SPAWN_BOX + cx;
+        sy = level.mapHeight - SPAWN_BOX + cy;
         tank.angle = Math.PI;
     }
-    const valid = findSpawnSpot(sx, sy, tank, bricks, level.mapWidth, level.mapHeight);
+    const valid = findSpawnSpot(sx, sy, tank, bricks, level.mapWidth, level.mapHeight, world.stones);
     tank.x = valid.x;
     tank.y = valid.y;
 }
@@ -357,16 +575,23 @@ function updateInventoryUI() {
     const sig = `${tank.healCount}|${tank.smokeCount}|${tank.mineCount}|${tank.rocketCount}|${Math.ceil(tank.damageBoostTimer)}|${Math.ceil(tank.speedBoostTimer)}`;
     if (sig === boostPanelRenderSig) return;
     boostPanelRenderSig = sig;
-    let html = '';
-    html += `<div class="boost-indicator"><div class="boost-icon" style="background:#4CAF50;border:1px solid #fff;"></div>Хилка [F]: ${tank.healCount}</div>`;
-    html += `<div class="boost-indicator"><div class="boost-icon" style="background:#888;border:1px solid #fff;"></div>Дым: ${tank.smokeCount}</div>`;
-    html += `<div class="boost-indicator"><div class="boost-icon" style="background:#2e4634;border:1px solid #fff;"></div>Мины: ${tank.mineCount}</div>`;
-    html += `<div class="boost-indicator"><div class="boost-icon" style="background:#ffeb3b;border:1px solid #f44336;"></div>Ракеты: ${tank.rocketCount}</div>`;
-    if (tank.damageBoostTimer > 0)
-        html += `<div class="boost-indicator"><div class="boost-icon circle" style="background:#f44336;"></div>Урон: ${Math.ceil(tank.damageBoostTimer)}с</div>`;
+    const img = assets.images;
+    // Инвентарь — слева снизу
+    let inv = '';
+    inv += `<div class="boost-indicator"><img class="boost-icon" src="${img.repairBoxInv.src}">Ремонт (R): ${tank.healCount}</div>`;
+    inv += `<div class="boost-indicator"><img class="boost-icon" src="${img.smokeBoxInv.src}">Дым (Q): ${tank.smokeCount}</div>`;
+    inv += `<div class="boost-indicator"><img class="boost-icon" src="${img.mine.src}">Мина (E): ${tank.mineCount}</div>`;
+    inv += `<div class="boost-indicator"><img class="boost-icon" src="${img.rocketBoxInv.src}">Ракета (F): ${tank.rocketCount}</div>`;
+    document.getElementById('boost-panel').innerHTML = inv;
+    // Активные бусты — по центру снизу
+    let boosts = '';
     if (tank.speedBoostTimer > 0)
-        html += `<div class="boost-indicator"><div class="boost-icon circle" style="background:#2196F3;"></div>Скор: ${Math.ceil(tank.speedBoostTimer)}с</div>`;
-    document.getElementById('boost-panel').innerHTML = html;
+        boosts += `<div class="boost-indicator"><img class="boost-icon" src="${img.speedBoost.src}">Скорость: ${Math.ceil(tank.speedBoostTimer)}с</div>`;
+    if (tank.damageBoostTimer > 0)
+        boosts += `<div class="boost-indicator"><img class="boost-icon" src="${img.atackSpeed.src}">Скорострельность: ${Math.ceil(tank.damageBoostTimer)}с</div>`;
+    const activePanel = document.getElementById('boost-active-panel');
+    activePanel.innerHTML = boosts;
+    activePanel.style.display = boosts ? 'flex' : 'none';
 }
 
 function loop(ts) {
@@ -403,6 +628,7 @@ function loop(ts) {
         level,
         bricks,
         forests,
+        stones,
         boosts,
         tracks,
         particles,
@@ -421,7 +647,27 @@ function loop(ts) {
     });
     camX = cam.camX;
     camY = cam.camY;
+    updateTabScoreboard();
     requestAnimationFrame(loop);
+}
+
+function updateTabScoreboard() {
+    const overlay = document.getElementById('tab-scoreboard');
+    if (!overlay) return;
+    const show = session.gameStarted && !session.roundOver && gameKeys['Tab'];
+    overlay.style.display = show ? 'flex' : 'none';
+    if (!show) return;
+    const tbody = document.getElementById('tab-score-tbody');
+    if (!tbody) return;
+    const stats = battle.liveStats || [];
+    const sorted = [...stats].sort((a, b) => a.team - b.team || b.kills - a.kills);
+    tbody.innerHTML = '';
+    sorted.forEach((s) => {
+        const tr = document.createElement('tr');
+        tr.className = s.team === 1 ? 'team1-row' : 'team2-row';
+        tr.innerHTML = `<td>${s.nick}</td><td>${s.kills}</td><td>${s.deaths}</td><td>${s.damageDealt}</td><td>${s.damageReceived}</td>`;
+        tbody.appendChild(tr);
+    });
 }
 
 function updateUI() {
@@ -454,5 +700,5 @@ Object.assign(gameMessageHooks, {
 });
 configureServerMessages({ send: sendGameMessage });
 
-export { addBot, createLobby, joinLobby, joinLobbyByCode, removeBot, setTeam, startGame, toggleReady };
+export { addBot, createLobby, joinLobby, joinLobbyByCode, rejoinLobby, removeBot, sendChatMessage, setTeam, startGame, toggleReady };
 

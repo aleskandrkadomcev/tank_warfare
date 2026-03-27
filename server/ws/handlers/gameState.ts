@@ -1,10 +1,10 @@
 import { ServerMsg } from '#shared/protocol.js';
+import { getTankDef } from '#shared/tankDefs.js';
 import type { WebSocket, WebSocketServer } from 'ws';
 import {
     BRICK_SIZE,
     DETECTION_MEMORY_MS,
-    DETECTION_RADIUS,
-    DETECTION_RADIUS_SMALL,
+    FOREST_DETECTION_RADIUS_FACTOR,
     FOREST_SECTION_SIZE,
     MAX_SCORE,
     SMOKE_CLOUD_RADIUS,
@@ -13,28 +13,50 @@ import {
 import { buildBotPathGrid } from '../../game/pathfinding.js';
 import { triggerMine } from '../../game/mine.js';
 import { broadcastGame, broadcastScores } from '../broadcast.js';
-import { obbIntersectsObb } from '../../game/collision.js';
+import { lineBlockedByStones, obbIntersectsObb } from '../../game/collision.js';
 import { lobbies, type Lobby, type LobbyHull } from '../lobbyStore.js';
+import { generateMapData } from '../../game/mapGenerator.js';
+import { initBotsForStart, startAiTick, stopAiTick } from '../bots.js';
 
 function pruneExpiredSmokes(lobby: (typeof lobbies)[string], now: number): void {
     lobby.smokes = lobby.smokes.filter((s) => s.expiresAt > now);
 }
 
-function pointInsideAnySmoke(lobby: (typeof lobbies)[string], x: number, y: number, now: number): boolean {
+/** Возвращает облака дыма, покрывающие точку (для исключения «своего» дыма). */
+function getSmokesCoveringPoint(lobby: (typeof lobbies)[string], x: number, y: number, now: number) {
+    const result: typeof lobby.smokes = [];
     for (const s of lobby.smokes) {
         if (s.expiresAt <= now) continue;
+        if (Math.hypot(x - s.x, y - s.y) < SMOKE_CLOUD_RADIUS) result.push(s);
+    }
+    return result;
+}
+
+/** Возвращает секции леса, покрывающие точку (для исключения «своего» куста). */
+function getForestsCoveringPoint(lobby: (typeof lobbies)[string], x: number, y: number) {
+    const forests = lobby.mapData?.forests || [];
+    return forests.filter((f) => x >= f.x && x <= f.x + FOREST_SECTION_SIZE && y >= f.y && y <= f.y + FOREST_SECTION_SIZE);
+}
+
+function pointInsideAnySmoke(lobby: (typeof lobbies)[string], x: number, y: number, now: number, exclude?: Set<unknown>): boolean {
+    for (const s of lobby.smokes) {
+        if (s.expiresAt <= now) continue;
+        if (exclude?.has(s)) continue;
         if (Math.hypot(x - s.x, y - s.y) < SMOKE_CLOUD_RADIUS) return true;
     }
     return false;
 }
 
-function pointInsideAnyForest(lobby: (typeof lobbies)[string], x: number, y: number): boolean {
+function pointInsideAnyForest(lobby: (typeof lobbies)[string], x: number, y: number, exclude?: Set<unknown>): boolean {
     const forests = lobby.mapData?.forests || [];
-    return forests.some((f) => x >= f.x && x <= f.x + FOREST_SECTION_SIZE && y >= f.y && y <= f.y + FOREST_SECTION_SIZE);
+    return forests.some((f) => {
+        if (exclude?.has(f)) return false;
+        return x >= f.x && x <= f.x + FOREST_SECTION_SIZE && y >= f.y && y <= f.y + FOREST_SECTION_SIZE;
+    });
 }
 
-/** Сегмент обзора пересекает диск облака дыма (игроки могут быть снаружи, дым между ними). */
-function lineCrossesSmokeCloud(lobby: (typeof lobbies)[string], x1: number, y1: number, x2: number, y2: number, now: number): boolean {
+/** Сегмент обзора пересекает диск облака дыма (исключая указанные облака). */
+function lineCrossesSmokeCloud(lobby: (typeof lobbies)[string], x1: number, y1: number, x2: number, y2: number, now: number, exclude?: Set<unknown>): boolean {
     const dist = Math.hypot(x2 - x1, y2 - y1);
     const steps = Math.max(1, Math.ceil(dist / 40));
     for (let i = 1; i < steps; i++) {
@@ -43,13 +65,14 @@ function lineCrossesSmokeCloud(lobby: (typeof lobbies)[string], x1: number, y1: 
         const py = y1 + (y2 - y1) * t;
         for (const s of lobby.smokes) {
             if (s.expiresAt <= now) continue;
+            if (exclude?.has(s)) continue;
             if (Math.hypot(px - s.x, py - s.y) < SMOKE_CLOUD_RADIUS) return true;
         }
     }
     return false;
 }
 
-function lineCrossesForest(lobby: (typeof lobbies)[string], x1: number, y1: number, x2: number, y2: number): boolean {
+function lineCrossesForest(lobby: (typeof lobbies)[string], x1: number, y1: number, x2: number, y2: number, exclude?: Set<unknown>): boolean {
     const forests = lobby.mapData?.forests || [];
     if (forests.length === 0) return false;
     const dist = Math.hypot(x2 - x1, y2 - y1);
@@ -59,6 +82,7 @@ function lineCrossesForest(lobby: (typeof lobbies)[string], x1: number, y1: numb
         const px = x1 + (x2 - x1) * t;
         const py = y1 + (y2 - y1) * t;
         for (const f of forests) {
+            if (exclude?.has(f)) continue;
             if (px >= f.x && px <= f.x + FOREST_SECTION_SIZE && py >= f.y && py <= f.y + FOREST_SECTION_SIZE) return true;
         }
     }
@@ -82,6 +106,11 @@ function lineBlockedByBricks(lobby: (typeof lobbies)[string], x1: number, y1: nu
     return false;
 }
 
+/**
+ * Игрок внутри куста/дыма получает преимущество: его собственный куст/дым
+ * НЕ ограничивает ему обзор. Но если между ним и врагом есть ДРУГОЙ дым/куст,
+ * обзор всё равно режется до малого радиуса.
+ */
 function canObserverDetectTarget(lobby: (typeof lobbies)[string], observer: WebSocket, target: WebSocket, now: number): boolean {
     if (!observer.lastPos || !target.lastPos) return false;
     if (observer.lastPos.hp <= 0 || target.lastPos.hp <= 0) return false;
@@ -90,17 +119,24 @@ function canObserverDetectTarget(lobby: (typeof lobbies)[string], observer: WebS
     const tx = target.lastPos.x;
     const ty = target.lastPos.y;
     const dist = Math.hypot(tx - ox, ty - oy);
-    if (dist > DETECTION_RADIUS) return false;
+    const obsRadius = getTankDef(observer.tankType).detectionRadius;
+    if (dist > obsRadius) return false;
     if (lineBlockedByBricks(lobby, ox, oy, tx, ty)) return false;
+    if (lobby.mapData?.stones?.length && lineBlockedByStones(ox, oy, tx, ty, lobby.mapData.stones)) return false;
 
-    const smokeBetween = lineCrossesSmokeCloud(lobby, ox, oy, tx, ty, now);
-    const observerInSmoke = pointInsideAnySmoke(lobby, ox, oy, now);
-    const targetInSmoke = pointInsideAnySmoke(lobby, tx, ty, now);
-    const forestBetween = lineCrossesForest(lobby, ox, oy, tx, ty);
-    const observerInForest = pointInsideAnyForest(lobby, ox, oy);
-    const targetInForest = pointInsideAnyForest(lobby, tx, ty);
-    if (smokeBetween || observerInSmoke || targetInSmoke || forestBetween || observerInForest || targetInForest) {
-        if (dist > DETECTION_RADIUS_SMALL) return false;
+    // Собираем дымы и кусты, в которых стоит наблюдатель — они ему НЕ мешают
+    const observerSmokes = getSmokesCoveringPoint(lobby, ox, oy, now);
+    const observerForests = getForestsCoveringPoint(lobby, ox, oy);
+    const excluded: Set<unknown> = new Set([...observerSmokes, ...observerForests]);
+
+    // Все проверки — с исключением «своих» объектов наблюдателя
+    const smokeBetween = lineCrossesSmokeCloud(lobby, ox, oy, tx, ty, now, excluded);
+    const targetInSmoke = pointInsideAnySmoke(lobby, tx, ty, now, excluded);
+    const forestBetween = lineCrossesForest(lobby, ox, oy, tx, ty, excluded);
+    const targetInForest = pointInsideAnyForest(lobby, tx, ty, excluded);
+
+    if (smokeBetween || targetInSmoke || forestBetween || targetInForest) {
+        if (dist > obsRadius * FOREST_DETECTION_RADIUS_FACTOR) return false;
     }
     return true;
 }
@@ -166,7 +202,7 @@ function pushHullsFromTank(lobby: Lobby, tx: number, ty: number, tAngle: number,
 
 export function handleState(_wss: WebSocketServer, ws: WebSocket, data: Record<string, unknown>): void {
     const lobby = ws.lobbyId ? lobbies[ws.lobbyId] : undefined;
-    if (lobby?.gameStarted) {
+    if (lobby?.gameStarted && !lobby.roundOver) {
         const now = Date.now();
         if (!lobby.smokes) lobby.smokes = [];
         pruneExpiredSmokes(lobby, now);
@@ -189,8 +225,14 @@ export function handleState(_wss: WebSocketServer, ws: WebSocket, data: Record<s
         // Толкаем остовы
         if (lobby.hulls && lobby.hulls.length > 0 && ws.hp > 0) {
             const pushed = pushHullsFromTank(lobby, ws.x, ws.y, ws.angle ?? 0, ws.w ?? 75, ws.h ?? 45);
-            for (const h of pushed) {
-                broadcastGame(lobby, { type: ServerMsg.HULL_UPDATE, id: h.id, x: h.x, y: h.y, angle: h.angle });
+            if (pushed.length > 0) {
+                for (const h of pushed) {
+                    broadcastGame(lobby, { type: ServerMsg.HULL_UPDATE, id: h.id, x: h.x, y: h.y, angle: h.angle });
+                }
+                // Сервер говорит клиенту: ты толкнул остов — замедлись
+                if (ws.readyState === 1) {
+                    ws.send(JSON.stringify({ type: ServerMsg.HULL_SLOW }));
+                }
             }
         }
 
@@ -218,6 +260,9 @@ export function handleState(_wss: WebSocketServer, ws: WebSocket, data: Record<s
             hp: data.hp,
             vx: data.vx,
             vy: data.vy,
+            w: ws.w,
+            h: ws.h,
+            tankType: ws.tankType || 'medium',
             spawnImmunityTimer: Math.max(0, SPAWN_IMMUNITY_TIME - (now - ws.spawnTime) / 1000),
         };
 
@@ -234,7 +279,51 @@ export function handleState(_wss: WebSocketServer, ws: WebSocket, data: Record<s
     }
 }
 
-export function handleRestartMatch(_wss: WebSocketServer, ws: WebSocket, _data: Record<string, unknown>): void {
+/**
+ * Периодически рассылает STATE неактивных (свернувших браузер) игроков,
+ * чтобы они не пропадали с карты у других.
+ */
+const IDLE_BROADCAST_INTERVAL = 500; // мс
+const IDLE_THRESHOLD = 1000; // считаем idle после 1 сек без STATE
+
+export function broadcastIdlePlayers(lobby: Lobby): void {
+    const now = Date.now();
+    lobby.players.forEach((ws) => {
+        if (ws.isBot) return; // боты обновляются через bots.ts
+        if (!ws.lastPos || ws.lastPos.hp <= 0) return;
+        if (now - ws.lastPosAt < IDLE_THRESHOLD) return; // активен — уже шлёт сам
+
+        const statePayload = {
+            type: ServerMsg.STATE,
+            id: ws.id,
+            team: ws.team,
+            color: ws.color,
+            x: ws.x,
+            y: ws.y,
+            angle: ws.angle ?? 0,
+            turretAngle: ws.turretAngle ?? 0,
+            hp: ws.hp,
+            vx: 0,
+            vy: 0,
+            spawnImmunityTimer: Math.max(0, SPAWN_IMMUNITY_TIME - (now - ws.spawnTime) / 1000),
+        };
+
+        lobby.players.forEach((recipient) => {
+            if (recipient === ws || recipient.readyState !== 1) return;
+            if (recipient.team === ws.team) {
+                recipient.send(JSON.stringify(statePayload));
+                return;
+            }
+            if (isTargetVisibleToTeam(lobby, ws, recipient.team, now)) {
+                recipient.send(JSON.stringify(statePayload));
+            }
+        });
+    });
+}
+
+export { IDLE_BROADCAST_INTERVAL };
+
+export function handleRestartMatch(wss: WebSocketServer, ws: WebSocket, _data: Record<string, unknown>): void {
     const lobby = ws.lobbyId ? lobbies[ws.lobbyId] : undefined;
     if (lobby && ws.id === lobby.hostId) {
         lobby.scores = { 1: 0, 2: 0 };
@@ -243,12 +332,24 @@ export function handleRestartMatch(_wss: WebSocketServer, ws: WebSocket, _data: 
         lobby.rockets = [];
         lobby.aiBullets = [];
         lobby.hulls = [];
+        lobby.roundOver = false;
+        // Перегенерируем карту
+        const mapSize = lobby.mapSize || 'small';
+        lobby.mapData = generateMapData(mapSize);
         lobby.aiGrid = lobby.mapData ? buildBotPathGrid(lobby.mapData) : null;
         lobby.detectionVisibleUntil = {};
         lobby.smokes = [];
+        // Сброс статистики
+        lobby.stats = {};
         lobby.players.forEach((p) => {
             p.spawnTime = Date.now();
+            p._lastAttackerId = undefined;
+            lobby.stats[p.id!] = { kills: 0, deaths: 0, damageDealt: 0, damageReceived: 0 };
         });
+        // Перезапускаем ботов
+        initBotsForStart(lobby);
+        stopAiTick(lobby);
+        startAiTick(wss, lobby);
         broadcastScores(lobby);
         broadcastGame(lobby, { type: ServerMsg.RESTART_MATCH, map: lobby.mapData });
     }
@@ -256,7 +357,7 @@ export function handleRestartMatch(_wss: WebSocketServer, ws: WebSocket, _data: 
 
 export function handleDeath(_wss: WebSocketServer, ws: WebSocket, _data: Record<string, unknown>): void {
     const lobby = ws.lobbyId ? lobbies[ws.lobbyId] : undefined;
-    if (lobby?.gameStarted) {
+    if (lobby?.gameStarted && !lobby.roundOver) {
         ws.hp = 0;
         if (ws.lastPos) ws.lastPos.hp = 0;
         ws.spawnTime = Date.now() + 2000;
@@ -275,15 +376,34 @@ export function handleDeath(_wss: WebSocketServer, ws: WebSocket, _data: Record<
         lobby.hulls.push(hull);
         broadcastGame(lobby, { type: ServerMsg.HULL_SPAWN, ...hull });
 
+        // Статистика: смерть
+        if (lobby.stats[ws.id!]) lobby.stats[ws.id!].deaths++;
+
         const enemyTeam = ws.team === 1 ? 2 : 1;
         lobby.scores[enemyTeam]++;
+
+        // Статистика: +1 kill ко всем живым врагам (последний стрелявший неизвестен — считаем команде)
+        // Для простоты: если есть lastAttacker на ws, считаем его
+        if (ws._lastAttackerId && lobby.stats[ws._lastAttackerId]) {
+            lobby.stats[ws._lastAttackerId].kills++;
+        }
+
         broadcastScores(lobby);
 
         const limit = lobby.scoreLimit ?? MAX_SCORE;
-        if (lobby.scores[1] >= limit && lobby.scores[2] >= limit) {
-            broadcastGame(lobby, { type: ServerMsg.GAME_OVER, winner: 0 });
-        } else if (lobby.scores[enemyTeam] >= limit) {
-            broadcastGame(lobby, { type: ServerMsg.GAME_OVER, winner: enemyTeam });
+        const gameOver = (lobby.scores[1] >= limit && lobby.scores[2] >= limit) || lobby.scores[enemyTeam] >= limit;
+        if (gameOver) {
+            lobby.roundOver = true;
+            stopAiTick(lobby);
+            const winner = (lobby.scores[1] >= limit && lobby.scores[2] >= limit) ? 0 : enemyTeam;
+            // Формируем статистику для клиента
+            const playerStats = lobby.players.map((p) => ({
+                id: p.id,
+                nick: p.nickname || 'Bot',
+                team: p.team,
+                ...(lobby.stats[p.id!] || { kills: 0, deaths: 0, damageDealt: 0, damageReceived: 0 }),
+            }));
+            broadcastGame(lobby, { type: ServerMsg.GAME_OVER, winner, stats: playerStats });
         } else {
             broadcastGame(lobby, { type: ServerMsg.PLAYER_DIED, playerId: ws.id, x: hullX, y: hullY });
         }

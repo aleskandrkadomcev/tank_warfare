@@ -13,6 +13,8 @@ import {
     handleChangeTeam,
     handleCreateLobby,
     handleJoinLobby,
+    handleLobbyChat,
+    handleRejoinLobby,
     handleRemoveBot,
     handleStartGame,
     handleToggleReady,
@@ -24,6 +26,7 @@ import {
     handleDeployMine,
     handleDeploySmoke,
     handleLaunchRocket,
+    handleUseHeal,
 } from './handlers/world.js';
 
 type DispatchFn = (wss: WebSocketServer, ws: WebSocket, data: Record<string, unknown>) => void;
@@ -49,6 +52,9 @@ const handlers: Partial<Record<string, DispatchFn>> = {
     [ClientMsg.DEPLOY_SMOKE]: handleDeploySmoke,
     [ClientMsg.ADD_BOT]: handleAddBot,
     [ClientMsg.REMOVE_BOT]: handleRemoveBot,
+    [ClientMsg.USE_HEAL]: handleUseHeal,
+    [ClientMsg.REJOIN_LOBBY]: handleRejoinLobby,
+    [ClientMsg.LOBBY_CHAT]: handleLobbyChat,
 };
 
 /** Проверка: на каждое значение `ClientMsg` назначен хендлер (юнит-тест + опционально dev-старт). */

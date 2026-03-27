@@ -8,6 +8,7 @@ import { isValidColor, sanitizeLobbyName, sanitizeNick } from '../../utils/valid
 import { createBotForLobby, initBotsForStart, startAiTick } from '../bots.js';
 import { broadcastLobbyList, broadcastLobbyState } from '../broadcast.js';
 import { lobbies } from '../lobbyStore.js';
+import { broadcastIdlePlayers, IDLE_BROADCAST_INTERVAL } from './gameState.js';
 
 function parseScoreLimit(val: unknown): number {
     const n = typeof val === 'number' ? val : typeof val === 'string' ? parseInt(val, 10) : NaN;
@@ -25,6 +26,7 @@ export function handleCreateLobby(wss: WebSocketServer, ws: WebSocket, data: Rec
     ws.team = 1;
     ws.ready = false;
     ws.color = typeof data.color === 'string' ? data.color : '#4CAF50';
+    ws.camo = typeof data.camo === 'string' ? data.camo : 'none';
     lobbies[lobbyId] = {
         hostId: ws.id,
         name: sanitizeLobbyName(data.lobbyName),
@@ -41,8 +43,15 @@ export function handleCreateLobby(wss: WebSocketServer, ws: WebSocket, data: Rec
         hulls: [],
         detectionVisibleUntil: {},
         smokes: [],
+        idleTickHandle: null,
+        botsOnlyCleanupHandle: null,
         mapSize: typeof data.mapSize === 'string' ? data.mapSize : 'small',
         scoreLimit: parseScoreLimit(data.scoreLimit),
+        stats: {},
+        roundOver: false,
+        countdownHandle: null,
+        countdown: 0,
+        windAngle: 0,
     };
     ws.send(
         JSON.stringify({
@@ -59,6 +68,90 @@ export function handleCreateLobby(wss: WebSocketServer, ws: WebSocket, data: Rec
     broadcastLobbyList(wss);
 }
 
+export function handleRejoinLobby(_wss: WebSocketServer, ws: WebSocket, data: Record<string, unknown>): void {
+    const lobbyId = typeof data.lobbyId === 'string' ? data.lobbyId : '';
+    const lobby = lobbyId ? lobbies[lobbyId] : undefined;
+    if (!lobby || !lobby.gameStarted) {
+        ws.send(JSON.stringify({ type: ServerMsg.ERROR, msg: 'Lobby not found or game not running' }));
+        return;
+    }
+    const nickname = sanitizeNick(data.nickname);
+    // Ищем «призрака» — отключённого игрока с таким же ником
+    const ghost = lobby.players.find(
+        (p) => !p.isBot && p.disconnectedAt && p.nickname === nickname,
+    );
+    if (!ghost) {
+        ws.send(JSON.stringify({ type: ServerMsg.ERROR, msg: 'No slot to rejoin' }));
+        return;
+    }
+    // Переносим данные призрака на новый ws
+    ws.id = ghost.id;
+    ws.lobbyId = lobbyId;
+    ws.nickname = ghost.nickname;
+    ws.team = ghost.team;
+    ws.ready = true;
+    ws.color = ghost.color;
+    ws.camo = ghost.camo;
+    ws.isInGame = true;
+    ws.x = ghost.x;
+    ws.y = ghost.y;
+    ws.angle = ghost.angle;
+    ws.turretAngle = ghost.turretAngle;
+    ws.vx = ghost.vx;
+    ws.vy = ghost.vy;
+    ws.hp = ghost.hp;
+    ws.spawnTime = ghost.spawnTime;
+    ws.lastPos = ghost.lastPos;
+    ws.lastPosAt = ghost.lastPosAt;
+    ws.w = ghost.w ?? 75;
+    ws.h = ghost.h ?? 45;
+    // Заменяем призрака на живой ws
+    const idx = lobby.players.indexOf(ghost);
+    if (idx !== -1) lobby.players[idx] = ws;
+    // Отменяем таймер удаления «только боты» — человек вернулся
+    if (lobby.botsOnlyCleanupHandle) {
+        clearTimeout(lobby.botsOnlyCleanupHandle);
+        lobby.botsOnlyCleanupHandle = null;
+    }
+    // Считаем spawnSlot
+    let spawnSlot = 0;
+    for (const p of lobby.players) {
+        if (p.team === ws.team) {
+            if (p === ws) break;
+            spawnSlot++;
+        }
+    }
+    // Отправляем REJOIN — клиент обработает так же как START
+    ws.send(JSON.stringify({
+        type: ServerMsg.REJOIN,
+        team: ws.team,
+        playerId: ws.id,
+        color: ws.color,
+        scoreLimit: lobby.scoreLimit,
+        spawnSlot,
+        windAngle: lobby.windAngle,
+        hp: ws.hp,
+        x: ws.x,
+        y: ws.y,
+        angle: ws.angle,
+        turretAngle: ws.turretAngle,
+        scores: lobby.scores,
+        allPlayers: lobby.players.map((pl) => ({
+            id: pl.id,
+            nick: pl.nickname,
+            team: pl.team,
+            color: pl.color,
+            camo: pl.camo || 'none',
+            isBot: Boolean(pl.isBot),
+        })),
+        map: lobby.mapData,
+        // Текущие сущности
+        mines: lobby.mines,
+        boosts: lobby.boosts,
+        hulls: lobby.hulls,
+    }));
+}
+
 export function handleJoinLobby(wss: WebSocketServer, ws: WebSocket, data: Record<string, unknown>): void {
     const lobbyId = typeof data.lobbyId === 'string' ? data.lobbyId : '';
     const lobby = lobbyId ? lobbies[lobbyId] : undefined;
@@ -69,6 +162,9 @@ export function handleJoinLobby(wss: WebSocketServer, ws: WebSocket, data: Recor
         ws.team = 2;
         ws.ready = false;
         ws.color = typeof data.color === 'string' ? data.color : '#f44336';
+        ws.camo = typeof data.camo === 'string' ? data.camo : 'none';
+        // Новый игрок не готов — отменяем отсчёт если был
+        cancelCountdown(lobby);
         lobby.players.push(ws);
         ws.send(
             JSON.stringify({
@@ -93,6 +189,10 @@ export function handleUpdatePlayer(_wss: WebSocketServer, ws: WebSocket, data: R
     if (lobby && !lobby.gameStarted) {
         if (typeof data.nickname === 'string') ws.nickname = sanitizeNick(data.nickname);
         if (typeof data.color === 'string' && isValidColor(data.color)) ws.color = data.color;
+        if (typeof data.camo === 'string') ws.camo = data.camo;
+        if (typeof data.tankType === 'string' && (data.tankType === 'medium' || data.tankType === 'heavy')) {
+            ws.tankType = data.tankType;
+        }
         // Хост может менять настройки лобби
         if (ws.id === lobby.hostId) {
             if (data.scoreLimit !== undefined) lobby.scoreLimit = parseScoreLimit(data.scoreLimit);
@@ -106,54 +206,138 @@ export function handleChangeTeam(_wss: WebSocketServer, ws: WebSocket, data: Rec
     const team = typeof data.team === 'number' ? data.team : 0;
     if (lobby && !lobby.gameStarted) {
         const teamCount = lobby.players.filter((p) => p.team === team).length;
-        if (teamCount < 5) {
-            ws.team = team;
-            broadcastLobbyState(lobby);
+        if (teamCount >= 5) return;
+        // Хост может перемещать других игроков
+        if (typeof data.targetId === 'string' && ws.id === lobby.hostId) {
+            const target = lobby.players.find((p) => p.id === data.targetId);
+            if (target) {
+                target.team = team;
+                broadcastLobbyState(lobby);
+            }
+            return;
         }
+        ws.team = team;
+        broadcastLobbyState(lobby);
     }
+}
+
+function cancelCountdown(lobby: import('../lobbyStore.js').Lobby): void {
+    if (lobby.countdownHandle) {
+        clearInterval(lobby.countdownHandle);
+        lobby.countdownHandle = null;
+        lobby.countdown = 0;
+    }
+}
+
+function broadcastChat(lobby: import('../lobbyStore.js').Lobby, nick: string, text: string, color?: string): void {
+    const msg = JSON.stringify({ type: ServerMsg.LOBBY_CHAT, nick, text, color });
+    lobby.players.forEach((p) => {
+        if (!p.isBot && p.readyState === 1) p.send(msg);
+    });
+}
+
+export function handleLobbyChat(_wss: WebSocketServer, ws: WebSocket, data: Record<string, unknown>): void {
+    const lobby = ws.lobbyId ? lobbies[ws.lobbyId] : undefined;
+    if (!lobby) return;
+    const text = typeof data.text === 'string' ? data.text.trim().slice(0, 200) : '';
+    if (!text) return;
+    broadcastChat(lobby, ws.nickname || 'Игрок', text);
 }
 
 export function handleToggleReady(_wss: WebSocketServer, ws: WebSocket, _data: Record<string, unknown>): void {
     const lobby = ws.lobbyId ? lobbies[ws.lobbyId] : undefined;
     if (lobby && !lobby.gameStarted) {
+        // Нельзя снять готовность во время отсчёта
+        if (ws.ready && lobby.countdownHandle) return;
         ws.ready = !ws.ready;
         broadcastLobbyState(lobby);
     }
 }
 
-export function handleStartGame(_wss: WebSocketServer, ws: WebSocket, data: Record<string, unknown>): void {
-    const lobby = ws.lobbyId ? lobbies[ws.lobbyId] : undefined;
-    if (lobby && ws.id === lobby.hostId && !lobby.gameStarted && lobby.players.length >= 1) {
-        lobby.gameStarted = true;
-        const mapSize = typeof data.mapSize === 'string' ? data.mapSize : (lobby.mapSize || 'small');
-        console.log('[DEBUG] handleStartGame mapSize =', mapSize);
-        lobby.mapData = generateMapData(mapSize);
-        console.log('[DEBUG] generated map w =', lobby.mapData?.w, 'h =', lobby.mapData?.h);
-        lobby.aiGrid = buildBotPathGrid(lobby.mapData);
-        initBotsForStart(lobby);
-        lobby.players.forEach((p) => {
-            p.isInGame = true;
-            p.spawnTime = Date.now();
-            p.send(
-                JSON.stringify({
-                    type: ServerMsg.START,
-                    team: p.team,
-                    playerId: p.id,
-                    color: p.color,
-                    scoreLimit: lobby.scoreLimit,
-                    allPlayers: lobby.players.map((pl) => ({
-                        id: pl.id,
-                        nick: pl.nickname,
-                        team: pl.team,
-                        color: pl.color,
-                        isBot: Boolean(pl.isBot),
-                    })),
-                    map: lobby.mapData,
-                }),
-            );
-        });
-        startAiTick(_wss, lobby);
+function doStartGame(wss: WebSocketServer, lobby: import('../lobbyStore.js').Lobby): void {
+    if (lobby.gameStarted) return;
+    lobby.gameStarted = true;
+    lobby.roundOver = false;
+    const mapSize = lobby.mapSize || 'small';
+    console.log('[DEBUG] handleStartGame mapSize =', mapSize);
+    lobby.mapData = generateMapData(mapSize);
+    lobby.stats = {};
+    lobby.players.forEach((p) => {
+        lobby.stats[p.id!] = { kills: 0, deaths: 0, damageDealt: 0, damageReceived: 0 };
+    });
+    console.log('[DEBUG] generated map w =', lobby.mapData?.w, 'h =', lobby.mapData?.h);
+    lobby.aiGrid = buildBotPathGrid(lobby.mapData);
+    initBotsForStart(lobby);
+    lobby.windAngle = Math.random() * Math.PI * 2;
+    const windAngle = lobby.windAngle;
+    const teamCounters: Record<number, number> = { 1: 0, 2: 0 };
+    lobby.players.forEach((p) => {
+        p.isInGame = true;
+        p.spawnTime = Date.now();
+        const spawnSlot = teamCounters[p.team] ?? 0;
+        teamCounters[p.team] = spawnSlot + 1;
+        p.send(
+            JSON.stringify({
+                type: ServerMsg.START,
+                team: p.team,
+                playerId: p.id,
+                color: p.color,
+                scoreLimit: lobby.scoreLimit,
+                spawnSlot,
+                windAngle,
+                allPlayers: lobby.players.map((pl) => ({
+                    id: pl.id,
+                    nick: pl.nickname,
+                    team: pl.team,
+                    color: pl.color,
+                    camo: pl.camo || 'none',
+                    tankType: pl.tankType || 'medium',
+                    isBot: Boolean(pl.isBot),
+                })),
+                map: lobby.mapData,
+            }),
+        );
+    });
+    startAiTick(wss, lobby);
+    if (!lobby.idleTickHandle) {
+        lobby.idleTickHandle = setInterval(() => {
+            if (!lobby.gameStarted) {
+                if (lobby.idleTickHandle) { clearInterval(lobby.idleTickHandle); lobby.idleTickHandle = null; }
+                return;
+            }
+            broadcastIdlePlayers(lobby);
+        }, IDLE_BROADCAST_INTERVAL);
     }
+}
+
+export function handleStartGame(wss: WebSocketServer, ws: WebSocket, _data: Record<string, unknown>): void {
+    const lobby = ws.lobbyId ? lobbies[ws.lobbyId] : undefined;
+    if (!lobby || ws.id !== lobby.hostId || lobby.gameStarted || lobby.players.length < 1) return;
+    // Если уже идёт отсчёт — игнорируем повторное нажатие
+    if (lobby.countdownHandle) return;
+    // Проверяем, все ли люди готовы
+    const humans = lobby.players.filter((p) => !p.isBot);
+    const notReady = humans.filter((p) => !p.ready);
+    if (notReady.length > 0) {
+        const names = notReady.map((p) => p.nickname || 'Игрок').join(', ');
+        broadcastChat(lobby, '', `${names} не готов!`, '#b10000');
+        return;
+    }
+    // Все готовы — запускаем 5-секундный отсчёт
+    lobby.countdown = 5;
+    broadcastChat(lobby, '', 'Игра начнётся через 5...', '#00b604');
+    broadcastLobbyState(lobby);
+    lobby.countdownHandle = setInterval(() => {
+        lobby.countdown--;
+        if (lobby.countdown <= 0) {
+            cancelCountdown(lobby);
+            broadcastChat(lobby, '', 'Бой начался!', '#00b604');
+            doStartGame(wss, lobby);
+            return;
+        }
+        broadcastChat(lobby, '', `Игра начнётся через ${lobby.countdown}...`, '#00b604');
+        broadcastLobbyState(lobby);
+    }, 1000);
 }
 
 export function handleAddBot(wss: WebSocketServer, ws: WebSocket, data: Record<string, unknown>): void {

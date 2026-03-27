@@ -1,4 +1,5 @@
 import { ServerMsg } from '#shared/protocol.js';
+import { getTankDef } from '#shared/tankDefs.js';
 import type { WebSocket, WebSocketServer } from 'ws';
 import { BRICK_SIZE, SMOKE_LIFETIME_MS } from '../../constants.js';
 import { buildBotPathGrid } from '../../game/pathfinding.js';
@@ -19,7 +20,7 @@ function runRocketExplosion(lobby: Lobby, rocket: LobbyRocket): void {
             const b = lobby.mapData.bricks[i];
             const cx = b.x + BRICK_SIZE / 2;
             const cy = b.y + BRICK_SIZE / 2;
-            if (Math.hypot(cx - rocket.tx, cy - rocket.ty) < 90) {
+            if (Math.hypot(cx - rocket.tx, cy - rocket.ty) < 117) {
                 destroyedBricks.push({ x: b.x, y: b.y });
                 lobby.mapData.bricks.splice(i, 1);
                 if (Math.random() < 0.5) {
@@ -42,7 +43,7 @@ function runRocketExplosion(lobby: Lobby, rocket: LobbyRocket): void {
         type: ServerMsg.EXPLOSION_EVENT,
         x: rocket.tx,
         y: rocket.ty,
-        radius: 90,
+        radius: 117,
         damage: 50,
         ownerId: rocket.ownerId,
         ownerTeam: rocket.ownerTeam,
@@ -54,10 +55,20 @@ function runRocketExplosion(lobby: Lobby, rocket: LobbyRocket): void {
     lobby.players.forEach((p) => {
         if (p.lastPos && p.lastPos.hp > 0) {
             const dist = Math.hypot(p.lastPos.x - rocket.tx, p.lastPos.y - rocket.ty);
-            if (dist < 90) {
-                const damage = 50;
+            if (dist < 117) {
+                const resist = getTankDef(p.tankType).explosionResist;
+                const damage = Math.round(50 * resist);
+                const actualDmg = Math.min(damage, p.lastPos.hp);
                 const nextHp = Math.max(0, p.lastPos.hp - damage);
                 p.lastPos.hp = nextHp;
+                // Трекинг урона
+                if (!lobby.stats[p.id!]) lobby.stats[p.id!] = { kills: 0, deaths: 0, damageDealt: 0, damageReceived: 0 };
+                lobby.stats[p.id!].damageReceived += actualDmg;
+                if (rocket.ownerId && rocket.ownerId !== p.id) {
+                    if (!lobby.stats[rocket.ownerId]) lobby.stats[rocket.ownerId] = { kills: 0, deaths: 0, damageDealt: 0, damageReceived: 0 };
+                    lobby.stats[rocket.ownerId].damageDealt += actualDmg;
+                }
+                p._lastAttackerId = rocket.ownerId || undefined;
                 if (p.isBot) {
                     p.hp = nextHp;
                     if (nextHp <= 0) {
@@ -184,6 +195,18 @@ export function handleBricksDestroyBatch(_wss: WebSocketServer, ws: WebSocket, d
             });
             lobby.aiGrid = buildBotPathGrid(lobby.mapData!);
         }
+    }
+}
+
+export function handleUseHeal(_wss: WebSocketServer, ws: WebSocket, _data: Record<string, unknown>): void {
+    const lobby = ws.lobbyId ? lobbies[ws.lobbyId] : undefined;
+    if (lobby?.gameStarted) {
+        broadcastGame(lobby, {
+            type: ServerMsg.USE_HEAL,
+            id: ws.id!,
+            x: ws.x,
+            y: ws.y,
+        }, ws);
     }
 }
 

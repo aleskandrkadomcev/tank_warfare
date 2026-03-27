@@ -8,6 +8,8 @@ declare module 'ws' {
         team: number;
         ready: boolean;
         color: string;
+        camo: string;
+        tankType: string;
         isInGame: boolean;
         isBot: boolean;
         w: number;
@@ -22,6 +24,10 @@ declare module 'ws' {
         vy: number;
         hp: number;
         spawnTime: number;
+        /** Время отключения (для реконнекта). undefined = подключён. */
+        disconnectedAt?: number;
+        /** ID последнего атакующего (для killtracking). */
+        _lastAttackerId?: string;
         botDifficulty?: number;
         botBrain?: {
             targetId: string | null;

@@ -25,6 +25,9 @@ export const ClientMsg = Object.freeze({
     DEPLOY_SMOKE: 'deploy_smoke',
     ADD_BOT: 'add_bot',
     REMOVE_BOT: 'remove_bot',
+    USE_HEAL: 'use_heal',
+    REJOIN_LOBBY: 'rejoin_lobby',
+    LOBBY_CHAT: 'lobby_chat',
 } as const);
 
 export const ServerMsg = Object.freeze({
@@ -56,6 +59,11 @@ export const ServerMsg = Object.freeze({
     MINE_REMOVED: 'mine_removed',
     HULL_SPAWN: 'hull_spawn',
     HULL_UPDATE: 'hull_update',
+    HULL_SLOW: 'hull_slow',
+    USE_HEAL: 'use_heal',
+    REJOIN: 'rejoin',
+    LOBBY_CLOSED: 'lobby_closed',
+    LOBBY_CHAT: 'lobby_chat',
 } as const);
 
 export type ClientMsgKey = keyof typeof ClientMsg;

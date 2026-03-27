@@ -5,28 +5,14 @@
 import { ClientMsg } from '../../../shared/dist/protocol.js';
 import { DETECTION_MEMORY_MS } from '../config/constants.js';
 import {
-    ACCEL_FORWARD,
-    ACCEL_REVERSE,
-    BASE_RELOAD_TIME,
     BOOST_DURATION,
     BOOST_PICKUP_RADIUS,
-    BOOST_RELOAD_TIME,
     BOOST_SPEED_DURATION,
-    BRAKE_POWER,
-    BULLET_DAMAGE_BASE,
-    BULLET_DAMAGE_BOOST,
-    COLLISION_DAMAGE,
-    GRIP,
-    MAX_SPEED_FORWARD,
-    MAX_SPEED_REVERSE,
     MAX_TRACKS_IN_WORLD,
-    NATURAL_DRAG,
-    TANK_MAX_HP,
     TRACK_LIFETIME,
-    TURN_SPEED,
-    TURRET_ROTATION_SPEED,
 } from '../config/constants.js';
 import {
+    calcPan,
     playAlert,
     playRocketFlyBy,
     playSound_BrickHit,
@@ -34,24 +20,31 @@ import {
     playSound_Heal,
     playSound_Hit,
     playSound_Shot,
+    playSound_ShotHeavy,
     playSound_Smoke,
     playSound_Speed,
+    playSound_StoneHit,
+    setListener,
 } from '../lib/audio.js';
 import { triggerShake } from './cameraShake.js';
 import {
     checkBulletBrickCollision,
+    checkBulletStoneCollision,
     clampTankCenterToMap,
     getTankHullHalfExtents,
     obbIntersectsObb,
     pointInsideObb,
     separateTankFromBricks,
+    separateTankFromStones,
     tankBrickCollisionIndex,
+    tankStoneCollision,
 } from './collision.js';
 import { addTrack, createSmokeCloud, spawnParticles } from './effects.js';
 import { battle, bumpBricksDrawRevision, level, session, world } from './gameState.js';
 
 const {
     bricks,
+    stones,
     bullets,
     particles,
     tracks,
@@ -81,6 +74,9 @@ export function runSimulation(dt, ctx) {
     const mapH = level.mapHeight;
 
     if (!session.gameStarted) return;
+    if (session.roundOver) return; // Раунд окончен — заморозка
+    const def = battle.tankDef;
+    setListener(camX, camY);
     // Удаляем врагов, которых давно не видно
     const now = performance.now();
     for (const id in enemyTanks) {
@@ -90,13 +86,16 @@ export function runSimulation(dt, ctx) {
         }
     }
     if (session.gameStarted && tank.hp > 0) updateInventoryUI();
-    if (keys['KeyR'] && session.isHost) {
-        send({ type: ClientMsg.RESTART_MATCH });
-        keys['KeyR'] = false;
-    }
     if (tank.hp <= 0 || tank.isDead) {
         if (session.myEngine) session.myEngine.update(dt, 0, 0);
         if (session.enemyEngine) session.enemyEngine.update(dt, 0, 0);
+        // Обновляем эффекты даже после смерти (пули, партиклы, ракеты, взрывы, дым)
+        updateEffectsOnly(dt);
+        if (tank._respawnTimer > 0) {
+            tank._respawnTimer -= dt;
+            const el = document.getElementById('death-screen');
+            if (el) el.innerHTML = `<div style="font-size:50px;color:#cc4036">УНИЧТОЖЕН</div><div style="font-size:37px;color:#f1f1f1">Возрождение через ${Math.max(0, tank._respawnTimer).toFixed(1)} сек</div>`;
+        }
         return;
     }
     if (tank.spawnImmunityTimer > 0) tank.spawnImmunityTimer -= dt;
@@ -105,14 +104,15 @@ export function runSimulation(dt, ctx) {
     if (tank.collisionTimer > 0) tank.collisionTimer -= dt;
     if (tank.healCooldown > 0) tank.healCooldown -= dt;
 
-    // Хилка — расходник на F
-    if (keys['KeyF'] && tank.healCount > 0 && tank.healCooldown <= 0 && tank.hp > 0 && tank.hp < TANK_MAX_HP) {
+    // Хилка — расходник на R
+    if (keys['KeyR'] && tank.healCount > 0 && tank.healCooldown <= 0 && tank.hp > 0 && tank.hp < def.hp) {
         tank.healCount--;
         tank.healCooldown = 2;
-        tank.hp = Math.min(TANK_MAX_HP, tank.hp + 50);
+        tank.hp = Math.min(def.hp, tank.hp + 50);
         spawnParticles(tank.x, tank.y, '#4CAF50', 10);
         playSound_Heal();
-        keys['KeyF'] = false;
+        send({ type: ClientMsg.USE_HEAL });
+        keys['KeyR'] = false;
         updateInventoryUI();
     }
 
@@ -131,7 +131,7 @@ export function runSimulation(dt, ctx) {
         keys['KeyE'] = false;
         updateInventoryUI();
     }
-    if (keys['Space'] && tank.rocketCount > 0) {
+    if (keys['KeyF'] && tank.rocketCount > 0) {
         tank.rocketCount--;
         const mx = keys['MouseX'] || width / 2;
         const my = keys['MouseY'] || height / 2;
@@ -140,12 +140,12 @@ export function runSimulation(dt, ctx) {
         send({ type: ClientMsg.LAUNCH_ROCKET, tx: wx, ty: wy });
         playAlert();
         playRocketFlyBy();
-        keys['Space'] = false;
+        keys['KeyF'] = false;
         updateInventoryUI();
     }
 
-    if (keys['KeyA']) tank.angle -= TURN_SPEED * dt;
-    if (keys['KeyD']) tank.angle += TURN_SPEED * dt;
+    if (keys['KeyA']) tank.angle -= def.turnSpeed * dt;
+    if (keys['KeyD']) tank.angle += def.turnSpeed * dt;
     clampTankCenterToMap(tank, mapW, mapH);
 
     const cosA = Math.cos(tank.angle);
@@ -156,20 +156,20 @@ export function runSimulation(dt, ctx) {
     if (keys['KeyW']) input = 1;
     if (keys['KeyS']) input = -1;
 
-    let currentMaxSpeed = MAX_SPEED_FORWARD;
+    let currentMaxSpeed = def.maxSpeedForward;
     if (tank.speedBoostTimer > 0) currentMaxSpeed *= 1.4;
 
     let targetSpeed;
     let accelRate;
     if (input === 1) {
         targetSpeed = currentMaxSpeed;
-        accelRate = forwardSpeed < 0 ? BRAKE_POWER : ACCEL_FORWARD;
+        accelRate = forwardSpeed < 0 ? def.brakePower : def.accelForward;
     } else if (input === -1) {
-        targetSpeed = -MAX_SPEED_REVERSE;
-        accelRate = forwardSpeed > 0 ? BRAKE_POWER : ACCEL_REVERSE;
+        targetSpeed = -def.maxSpeedReverse;
+        accelRate = forwardSpeed > 0 ? def.brakePower : def.accelReverse;
     } else {
         targetSpeed = 0;
-        accelRate = NATURAL_DRAG;
+        accelRate = def.naturalDrag;
     }
 
     if (input === -1 && forwardSpeed > 0) {
@@ -186,7 +186,7 @@ export function runSimulation(dt, ctx) {
         if (forwardSpeed < targetSpeed) forwardSpeed = targetSpeed;
     }
 
-    rightSpeed *= GRIP;
+    rightSpeed *= def.grip;
     tank.vx = forwardSpeed * cosA - rightSpeed * sinA;
     tank.vy = forwardSpeed * sinA + rightSpeed * cosA;
 
@@ -194,13 +194,15 @@ export function runSimulation(dt, ctx) {
     const nx = tank.x + tank.vx * dt;
     const ny = tank.y + tank.vy * dt;
     const colX = tankBrickCollisionIndex(nx, tank.y, tank.angle, hw, hh, bricks, mapW, mapH);
-    if (colX === -1) tank.x = nx;
+    if (colX === -1 && !tankStoneCollision(nx, tank.y, tank.angle, hw, hh, stones)) tank.x = nx;
     else tank.vx = 0;
     const colY = tankBrickCollisionIndex(tank.x, ny, tank.angle, hw, hh, bricks, mapW, mapH);
-    if (colY === -1) tank.y = ny;
+    if (colY === -1 && !tankStoneCollision(tank.x, ny, tank.angle, hw, hh, stones)) tank.y = ny;
     else tank.vy = 0;
     separateTankFromBricks(tank, bricks, mapW, mapH);
-    // Локальное толкание остовов (масса — танк замедляется)
+    if (stones.length) separateTankFromStones(tank, stones);
+    // Локальное толкание остовов (визуальная отзывчивость).
+    // Торможение танка приходит от сервера (HULL_SLOW) — надёжно для всех типов.
     for (const hull of world.hulls) {
         if (obbIntersectsObb(tank.x, tank.y, tank.angle, hw, hh, hull.x, hull.y, hull.angle, hull.w / 2, hull.h / 2)) {
             const dx = hull.x - tank.x;
@@ -208,9 +210,6 @@ export function runSimulation(dt, ctx) {
             const d = Math.hypot(dx, dy) || 1;
             hull.x += (dx / d) * 4;
             hull.y += (dy / d) * 4;
-            // Масса — танк теряет скорость
-            tank.vx *= 0.4;
-            tank.vy *= 0.4;
         }
     }
     // Остовы не должны стакаться
@@ -241,9 +240,9 @@ export function runSimulation(dt, ctx) {
                 const rvx = tank.vx - et.vx;
                 const rvy = tank.vy - et.vy;
                 const rs = Math.hypot(rvx, rvy);
-                if (rs > MAX_SPEED_FORWARD * 0.5 && tank.collisionTimer <= 0) {
+                if (rs > def.maxSpeedForward * 0.5 && tank.collisionTimer <= 0) {
                     if (tank.spawnImmunityTimer <= 0) {
-                        tank.hp -= COLLISION_DAMAGE;
+                        tank.hp -= def.collisionDamage;
                     }
                     spawnParticles(tank.x, tank.y, '#fff', 10);
                     playSound_Hit();
@@ -258,6 +257,7 @@ export function runSimulation(dt, ctx) {
         }
     }
     separateTankFromBricks(tank, bricks, mapW, mapH);
+    if (stones.length) separateTankFromStones(tank, stones);
     clampTankCenterToMap(tank, mapW, mapH);
 
     const mySpeedNorm = Math.abs(forwardSpeed) / currentMaxSpeed;
@@ -273,34 +273,46 @@ export function runSimulation(dt, ctx) {
             }
         }
     }
-    const distFactor = Math.max(0, 1 - distToEnemy / 1920);
-    if (session.myEngine) session.myEngine.update(dt, mySpeedNorm, 1);
-    if (session.enemyEngine) session.enemyEngine.update(dt, enemySpeed / MAX_SPEED_FORWARD, distFactor);
+    const myDistFactor = Math.max(0, 1 - Math.hypot(tank.x - camX, tank.y - camY) / 1920);
+    let closestEnemyCamDist = 1920;
+    for (const id in enemyTanks) {
+        const et = enemyTanks[id];
+        if (et.hp > 0) {
+            const d = Math.hypot(et.x - camX, et.y - camY);
+            if (d < closestEnemyCamDist) closestEnemyCamDist = d;
+        }
+    }
+    const enemyDistFactor = Math.max(0, 1 - closestEnemyCamDist / 1920);
+    if (session.myEngine) session.myEngine.update(dt, mySpeedNorm, myDistFactor);
+    if (session.enemyEngine) session.enemyEngine.update(dt, enemySpeed / def.maxSpeedForward, enemyDistFactor);
 
     if (tank.hp > 0) {
-        if (tank.hp <= 35) {
-            // Чёрный дым (≤35% HP), шанс 15%
+        const hpPct = tank.hp / def.hp;
+        if (hpPct <= 0.33) {
+            // Огонь (≤33% HP), шанс 15%
             if (Math.random() < 0.15) spawnParticles(tank.x, tank.y, '#555', 1, 'fire_smoke');
             if (Math.random() > 0.93) spawnParticles(tank.x, tank.y, '#ffdd00', 1, 'spark_fire');
-        } else if (tank.hp <= 66 && Math.random() > 0.96) {
-            // Серый дым (35-66% HP)
+        } else if (hpPct <= 0.66 && Math.random() > 0.96) {
+            // Серый дым (33-66% HP)
             spawnParticles(tank.x, tank.y, '#888', 1, 'smoke');
         }
     }
     for (const id in enemyTanks) {
         const et = enemyTanks[id];
         if (et.hp > 0 && (et.lastSeenAt ?? 0) + DETECTION_MEMORY_MS >= now) {
-            if (et.hp <= 35) {
+            const etMaxHp = et.maxHp || 100;
+            const etPct = et.hp / etMaxHp;
+            if (etPct <= 0.33) {
                 if (Math.random() < 0.15) spawnParticles(et.x, et.y, '#555', 1, 'fire_smoke');
                 if (Math.random() > 0.93) spawnParticles(et.x, et.y, '#ffdd00', 1, 'spark_fire');
-            } else if (et.hp <= 66 && Math.random() > 0.96) {
+            } else if (etPct <= 0.66 && Math.random() > 0.96) {
                 spawnParticles(et.x, et.y, '#888', 1, 'smoke');
             }
         }
     }
     // Чёрный дым от остовов (медленно рассеивается)
     for (const hull of world.hulls) {
-        if (Math.random() < 0.02) spawnParticles(hull.x, hull.y, '#111', 1, 'dark_smoke');
+        if (Math.random() < 0.003) spawnParticles(hull.x, hull.y, '#111', 1, 'dark_smoke');
     }
 
     // speedAbs нужен для разброса стрельбы
@@ -314,16 +326,20 @@ export function runSimulation(dt, ctx) {
     level._prevTrackY = tank.y;
     level.trackSpawnDist += movedDist;
     if (level.trackSpawnDist > 15) {
-        const off = 18;
+        const ttype = tank.tankType || 'medium';
+        const off = ttype === 'heavy' ? 23 : ttype === 'light' ? 15 : 18;
+        const backOff = ttype === 'heavy' ? 15 : 0;
+        const bkX = -Math.cos(tank.angle) * backOff;
+        const bkY = -Math.sin(tank.angle) * backOff;
         addTrack(
-            tank.x - Math.cos(tank.angle + Math.PI / 2) * off,
-            tank.y - Math.sin(tank.angle + Math.PI / 2) * off,
-            tank.angle,
+            tank.x + bkX - Math.cos(tank.angle + Math.PI / 2) * off,
+            tank.y + bkY - Math.sin(tank.angle + Math.PI / 2) * off,
+            tank.angle, ttype,
         );
         addTrack(
-            tank.x - Math.cos(tank.angle - Math.PI / 2) * off,
-            tank.y - Math.sin(tank.angle - Math.PI / 2) * off,
-            tank.angle,
+            tank.x + bkX - Math.cos(tank.angle - Math.PI / 2) * off,
+            tank.y + bkY - Math.sin(tank.angle - Math.PI / 2) * off,
+            tank.angle, ttype,
         );
         level.trackSpawnDist = 0;
         // Грязь из-под обеих гусениц сзади танка
@@ -354,12 +370,12 @@ export function runSimulation(dt, ctx) {
     while (diff < -Math.PI) diff += 2 * Math.PI;
     while (diff > Math.PI) diff -= 2 * Math.PI;
 
-    let finalSpeed = TURRET_ROTATION_SPEED;
+    let finalSpeed = def.turretRotationSpeed;
     let hullTurnDir = 0;
     if (keys['KeyA']) hullTurnDir = -1;
     if (keys['KeyD']) hullTurnDir = 1;
-    if ((diff < 0 && hullTurnDir < 0) || (diff > 0 && hullTurnDir > 0)) finalSpeed += TURN_SPEED;
-    else if (hullTurnDir !== 0) finalSpeed = Math.max(0.1, finalSpeed - TURN_SPEED * 0.5);
+    if ((diff < 0 && hullTurnDir < 0) || (diff > 0 && hullTurnDir > 0)) finalSpeed += def.turnSpeed;
+    else if (hullTurnDir !== 0) finalSpeed = Math.max(0.1, finalSpeed - def.turnSpeed * 0.5);
     if (Math.abs(diff) < finalSpeed * dt) tank.turretAngle = targetAngle;
     else tank.turretAngle += diff > 0 ? finalSpeed * dt : -finalSpeed * dt;
 
@@ -369,20 +385,21 @@ export function runSimulation(dt, ctx) {
     tank.aimDist += (targetAimDist - tank.aimDist) * aimLerp;
 
     if (tank.reload > 0) tank.reload -= dt;
-    let reloadTime = BASE_RELOAD_TIME;
-    let dmg = BULLET_DAMAGE_BASE;
+    let reloadTime = def.reloadTime;
+    let dmg = def.bulletDamage;
     if (tank.damageBoostTimer > 0) {
-        dmg = BULLET_DAMAGE_BOOST;
-        reloadTime = BOOST_RELOAD_TIME;
+        // Бонус атаки — только ускоренная перезарядка, урон не меняется
+        reloadTime = def.reloadTime * def.reloadBoostMult;
     }
 
     if (keys['MouseLeft'] && tank.reload <= 0) {
         const sr = speedAbs / currentMaxSpeed;
         const sp = (Math.random() - 0.5) * sr * 5 * (Math.PI / 180) * 2;
         const a = tank.turretAngle + sp;
+        const bulletOff = tank.tankType === 'heavy' ? 60 : 55;
         const b = {
-            x: tank.x + Math.cos(a) * 50,
-            y: tank.y + Math.sin(a) * 50,
+            x: tank.x + Math.cos(a) * bulletOff,
+            y: tank.y + Math.sin(a) * bulletOff,
             vx: Math.cos(a) * 1200,
             vy: Math.sin(a) * 1200,
             ownerId: session.myId,
@@ -393,7 +410,14 @@ export function runSimulation(dt, ctx) {
         b.bulletId = 'b_' + session.myId + '_' + battle.bulletCounter;
         bullets.push(b);
         tank.reload = reloadTime;
-        playSound_Shot(1);
+        tank._reloadTotal = reloadTime;
+        const shotVol = Math.max(0, 1 - Math.hypot(camX - b.x, camY - b.y) / 1920);
+        const shotPan = calcPan(b.x, b.y);
+        if (tank.tankType === 'heavy') {
+            playSound_ShotHeavy(shotVol, shotPan);
+        } else {
+            playSound_Shot(shotVol, shotPan);
+        }
         triggerShake('shot');
         spawnParticles(b.x, b.y, '#fff', 2, 'muzzle');
         spawnParticles(b.x, b.y, '#ffaa00', 3, 'muzzle');
@@ -444,7 +468,7 @@ export function runSimulation(dt, ctx) {
         if (bi >= 0) {
             spawnParticles(b.x, b.y, '#8b4513', 5);
             const brickDist = Math.hypot(tank.x - b.x, tank.y - b.y);
-            playSound_BrickHit(Math.max(0, 1 - brickDist / 1920));
+            playSound_BrickHit(Math.max(0, 1 - brickDist / 1920), calcPan(b.x, b.y));
             const hx = bricks[bi].x;
             const hy = bricks[bi].y;
             bricks.splice(bi, 1);
@@ -458,13 +482,21 @@ export function runSimulation(dt, ctx) {
             });
             continue;
         }
+        // Пуля попала в камень — искры + звук, пуля исчезает, камень не разрушается
+        if (stones.length && checkBulletStoneCollision(b.x, b.y, stones)) {
+            spawnParticles(b.x, b.y, '#999', 4);
+            const stoneDist = Math.hypot(tank.x - b.x, tank.y - b.y);
+            playSound_StoneHit(Math.max(0, 1 - stoneDist / 1920), calcPan(b.x, b.y));
+            bullets.splice(i, 1);
+            continue;
+        }
         // Пуля попала в остов — искры + звук, без урона
         let hitHull = false;
         for (const hull of world.hulls) {
             if (pointInsideObb(b.x, b.y, hull.x, hull.y, hull.angle, hull.w / 2, hull.h / 2)) {
                 spawnParticles(b.x, b.y, '#888', 3);
                 const hullDist = Math.hypot(tank.x - b.x, tank.y - b.y);
-                playSound_Hit(Math.max(0, 1 - hullDist / 1920));
+                playSound_Hit(Math.max(0, 1 - hullDist / 1920), calcPan(b.x, b.y));
                 bullets.splice(i, 1);
                 hitHull = true;
                 break;
@@ -474,7 +506,7 @@ export function runSimulation(dt, ctx) {
         if (b.ownerId === session.myId) {
             for (const id in enemyTanks) {
                 const et = enemyTanks[id];
-                if (et.hp > 0 && et.team !== session.myTeam && Math.hypot(b.x - et.x, b.y - et.y) < 20) {
+                if (et.hp > 0 && et.team !== session.myTeam && pointInsideObb(b.x, b.y, et.x, et.y, et.angle, (et.w || 75) / 2, (et.h || 45) / 2)) {
                     send({
                         type: ClientMsg.DEAL_DAMAGE,
                         damage: b.damage,
@@ -490,12 +522,15 @@ export function runSimulation(dt, ctx) {
         }
     }
 
+    const windVx = Math.cos(level.windAngle) * level.windSpeed;
+    const windVy = Math.sin(level.windAngle) * level.windSpeed;
     for (let i = particles.length - 1; i >= 0; i--) {
         const p = particles[i];
-        p.x += p.vx * dt;
-        p.y += p.vy * dt;
+        const isSmoke = p.type === 'smoke' || p.type === 'fire_smoke' || p.type === 'dark_smoke';
+        p.x += (p.vx + (isSmoke ? windVx : 0)) * dt;
+        p.y += (p.vy + (isSmoke ? windVy : 0)) * dt;
         p.life -= dt;
-        if (p.type === 'smoke' || p.type === 'fire_smoke' || p.type === 'dark_smoke') p.size += dt * 5;
+        if (isSmoke) p.size += dt * 5;
         if (p.life <= 0) particles.splice(i, 1);
     }
     for (let i = smokes.length - 1; i >= 0; i--) {
@@ -505,6 +540,8 @@ export function runSimulation(dt, ctx) {
             smokes.splice(i, 1);
             continue;
         }
+        s.x += windVx * dt;
+        s.y += windVy * dt;
         s.particles.forEach((p) => {
             if (s.time < 0.5) p.alpha = Math.min(0.8, p.alpha + dt * 2);
             else if (s.time > 7) p.alpha = Math.max(0, p.alpha - dt * 0.3);
@@ -528,6 +565,90 @@ export function runSimulation(dt, ctx) {
     updateBoosts(dt, send, updateInventoryUI);
     while (tracks.length > 0 && now - tracks[0].time > TRACK_LIFETIME) tracks.shift();
     while (tracks.length > MAX_TRACKS_IN_WORLD) tracks.shift();
+}
+
+function updateEffectsOnly(dt) {
+    const now = performance.now();
+    const mapW = level.mapWidth;
+    const mapH = level.mapHeight;
+    // Пули
+    for (let i = bullets.length - 1; i >= 0; i--) {
+        const b = bullets[i];
+        b.x += b.vx * dt;
+        b.y += b.vy * dt;
+        if (b.x < 0 || b.x > mapW || b.y < 0 || b.y > mapH) {
+            bullets.splice(i, 1);
+            continue;
+        }
+        const bi = checkBulletBrickCollision(b.x, b.y, 2, mapW, mapH, bricks);
+        if (bi >= 0) {
+            spawnParticles(b.x, b.y, '#8b4513', 5);
+            bricks.splice(bi, 1);
+            bumpBricksDrawRevision();
+            bullets.splice(i, 1);
+            continue;
+        }
+        if (stones.length && checkBulletStoneCollision(b.x, b.y, stones)) {
+            spawnParticles(b.x, b.y, '#999', 4);
+            bullets.splice(i, 1);
+            continue;
+        }
+        let hitHull = false;
+        for (const hull of world.hulls) {
+            if (pointInsideObb(b.x, b.y, hull.x, hull.y, hull.angle, hull.w / 2, hull.h / 2)) {
+                spawnParticles(b.x, b.y, '#888', 3);
+                bullets.splice(i, 1);
+                hitHull = true;
+                break;
+            }
+        }
+        if (hitHull) continue;
+    }
+    // Партиклы
+    const wVx = Math.cos(level.windAngle) * level.windSpeed;
+    const wVy = Math.sin(level.windAngle) * level.windSpeed;
+    for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        const isSmoke = p.type === 'smoke' || p.type === 'fire_smoke' || p.type === 'dark_smoke';
+        p.x += (p.vx + (isSmoke ? wVx : 0)) * dt;
+        p.y += (p.vy + (isSmoke ? wVy : 0)) * dt;
+        p.life -= dt;
+        if (isSmoke) p.size += dt * 5;
+        if (p.life <= 0) particles.splice(i, 1);
+    }
+    // Дымы
+    for (let i = smokes.length - 1; i >= 0; i--) {
+        const s = smokes[i];
+        s.time += dt;
+        if (s.time > 10) { smokes.splice(i, 1); continue; }
+        s.x += wVx * dt;
+        s.y += wVy * dt;
+        s.particles.forEach((p) => {
+            if (s.time < 0.5) p.alpha = Math.min(0.8, p.alpha + dt * 2);
+            else if (s.time > 7) p.alpha = Math.max(0, p.alpha - dt * 0.3);
+            p.size += dt * 2;
+            p.ox += (Math.random() - 0.5) * dt * 5;
+            p.oy += (Math.random() - 0.5) * dt * 5 - dt * 2;
+        });
+    }
+    // Ракеты
+    for (let i = rockets.length - 1; i >= 0; i--) {
+        const r = rockets[i];
+        if (performance.now() - r.startTime >= r.duration) rockets.splice(i, 1);
+    }
+    // Взрывы
+    for (let i = explosions.length - 1; i >= 0; i--) {
+        const e = explosions[i];
+        e.time += dt;
+        if (e.time > e.maxTime) explosions.splice(i, 1);
+    }
+    // Следы
+    while (tracks.length > 0 && now - tracks[0].time > TRACK_LIFETIME) tracks.shift();
+    while (tracks.length > MAX_TRACKS_IN_WORLD) tracks.shift();
+    // Чёрный дым от остовов
+    for (const hull of world.hulls) {
+        if (Math.random() < 0.003) spawnParticles(hull.x, hull.y, '#111', 1, 'dark_smoke');
+    }
 }
 
 function updateBoosts(dt, send, updateInventoryUI) {

@@ -2,6 +2,7 @@ import { BRICK_SIZE } from '../constants.js';
 import type { Lobby, LobbyMine } from '../ws/lobbyStore.js';
 import { broadcastGame } from '../ws/broadcast.js';
 import { ServerMsg } from '#shared/protocol.js';
+import { getTankDef } from '#shared/tankDefs.js';
 import { handleDeath } from '../ws/handlers/gameState.js';
 import type { WebSocketServer } from 'ws';
 
@@ -52,9 +53,19 @@ export function triggerMine(lobby: Lobby, mine: LobbyMine): void {
             if (p.lastPos && p.lastPos.hp > 0) {
                 const dist = Math.hypot(p.lastPos.x - mine.x, p.lastPos.y - mine.y);
                 if (dist < 90) {
-                    const damage = 50;
+                    const resist = getTankDef(p.tankType).explosionResist;
+                    const damage = Math.round(50 * resist);
+                    const actualDmg = Math.min(damage, p.lastPos.hp);
                     const nextHp = Math.max(0, p.lastPos.hp - damage);
                     p.lastPos.hp = nextHp;
+                    // Трекинг урона
+                    if (!lobby.stats[p.id!]) lobby.stats[p.id!] = { kills: 0, deaths: 0, damageDealt: 0, damageReceived: 0 };
+                    lobby.stats[p.id!].damageReceived += actualDmg;
+                    if (mine.owner && mine.owner !== p.id) {
+                        if (!lobby.stats[mine.owner]) lobby.stats[mine.owner] = { kills: 0, deaths: 0, damageDealt: 0, damageReceived: 0 };
+                        lobby.stats[mine.owner].damageDealt += actualDmg;
+                    }
+                    p._lastAttackerId = mine.owner || undefined;
                     if (p.isBot) {
                         p.hp = nextHp;
                         if (nextHp <= 0) {

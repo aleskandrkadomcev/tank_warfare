@@ -1,5 +1,8 @@
 export { PLAYER_TANK_COLORS, type PlayerTankColor } from './colors.js';
+export { TANK_DEFS, TANK_COMMON, getTankDef, type TankType, type TankDef } from './tankDefs.js';
 export { BRICK_SIZE, MAP_HEIGHT, MAP_WIDTH, MAX_PLAYERS, MAX_SCORE } from './map.js';
+export { STONE_HITBOXES, STONE_SPRITE_SIZE, STONE_TYPE_COUNT, getStoneWorldCircles } from './stoneData.js';
+export type { StonePos as StonePosition } from './stoneData.js';
 export {
     ClientMsg,
     ServerMsg,
@@ -33,6 +36,7 @@ export type {
     LobbyListRow,
     LobbyPlayerRow,
     MapPayload,
+    StonePos,
     PlayerSummary,
     ServerBoostPickupBroadcast,
     ServerBoostSpawnMessage,

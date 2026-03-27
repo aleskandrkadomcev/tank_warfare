@@ -1,4 +1,5 @@
 import { BRICK_SIZE } from '#shared/map.js';
+import { getStoneWorldCircles } from '#shared/stoneData.js';
 import type { MapData } from '../ws/lobbyStore.js';
 
 export type BotPathGrid = {
@@ -31,6 +32,30 @@ export function buildBotPathGrid(map: MapData, cellSize = DEFAULT_CELL_SIZE): Bo
         for (let row = startRow; row <= endRow; row++) {
             for (let col = startCol; col <= endCol; col++) {
                 blocked[indexOf({ cellSize, cols, rows, blocked }, col, row)] = 1;
+            }
+        }
+    }
+
+    // Блокируем ячейки, перекрытые камнями
+    if (map.stones) {
+        for (const stone of map.stones) {
+            const circles = getStoneWorldCircles(stone);
+            for (const c of circles) {
+                const startCol = Math.max(0, Math.floor((c.cx - c.r) / cellSize));
+                const endCol = Math.min(cols - 1, Math.floor((c.cx + c.r) / cellSize));
+                const startRow = Math.max(0, Math.floor((c.cy - c.r) / cellSize));
+                const endRow = Math.min(rows - 1, Math.floor((c.cy + c.r) / cellSize));
+                for (let row = startRow; row <= endRow; row++) {
+                    for (let col = startCol; col <= endCol; col++) {
+                        const cellCx = col * cellSize + cellSize / 2;
+                        const cellCy = row * cellSize + cellSize / 2;
+                        const dx = cellCx - c.cx;
+                        const dy = cellCy - c.cy;
+                        if (dx * dx + dy * dy < (c.r + cellSize * 0.5) * (c.r + cellSize * 0.5)) {
+                            blocked[indexOf({ cellSize, cols, rows, blocked }, col, row)] = 1;
+                        }
+                    }
+                }
             }
         }
     }

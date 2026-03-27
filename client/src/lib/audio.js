@@ -3,6 +3,22 @@ import { assets } from './assets.js';
 export let audioCtx = null;
 export let masterGain = null;
 
+// Позиция слушателя (камера/танк игрока)
+let listenerX = 0;
+let listenerY = 0;
+
+export function setListener(x, y) {
+  listenerX = x;
+  listenerY = y;
+}
+
+/** Вычисляет pan (-1 лево, +1 право) от позиции звука к слушателю */
+export function calcPan(sx, sy) {
+  const dx = sx - listenerX;
+  // Pan пропорционален горизонтальному смещению — близкие звуки ближе к центру
+  return Math.max(-1, Math.min(1, dx / 960));
+}
+
 export function initAudio() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -20,37 +36,79 @@ export function updateVolume() {
   masterGain.gain.setValueAtTime(v, audioCtx.currentTime);
 }
 
-export function playSound_Shot(vol = 1) {
+function getMasterVolume() {
+  const slider = document.getElementById('volumeSlider');
+  return slider ? Number(slider.value) / 100 : 1;
+}
+
+/** Воспроизводит UI-звук (без панорамы, просто громкость). */
+export function playUISound(audioEl, vol = 0.5) {
+  const clone = audioEl.cloneNode(true);
+  clone.volume = Math.max(0, Math.min(1, vol * getMasterVolume()));
+  clone.play().catch(() => { });
+}
+
+/**
+ * Воспроизводит HTML Audio через Web Audio API с панорамой и громкостью.
+ * Если audioCtx недоступен — фоллбэк на обычный .play().
+ */
+function playSample(audioEl, vol, pan) {
+  if (!audioCtx || !masterGain) {
+    audioEl.volume = Math.max(0, Math.min(1, vol * getMasterVolume()));
+    audioEl.play().catch(() => { });
+    return;
+  }
+  const source = audioCtx.createMediaElementSource(audioEl);
+  const panner = audioCtx.createStereoPanner();
+  panner.pan.value = Math.max(-1, Math.min(1, pan));
+  const gain = audioCtx.createGain();
+  gain.gain.value = Math.max(0, Math.min(1, vol));
+  source.connect(panner);
+  panner.connect(gain);
+  gain.connect(masterGain);
+  audioEl.play().catch(() => { });
+  audioEl.addEventListener('ended', () => {
+    source.disconnect(); panner.disconnect(); gain.disconnect();
+  }, { once: true });
+}
+
+export function playSound_Shot(vol = 1, pan = 0) {
   const s = assets.sounds.shoot.cloneNode(true);
-  s.volume = vol;
-  s.play().catch(() => { });
+  playSample(s, vol, pan);
 }
 
-export function playSound_Hit(vol = 1) {
+export function playSound_ShotHeavy(vol = 1, pan = 0) {
+  const s = assets.sounds.shootHeavy.cloneNode(true);
+  playSample(s, vol, pan);
+}
+
+export function playSound_Hit(vol = 1, pan = 0) {
   const s = assets.sounds.hit.cloneNode(true);
-  s.volume = Math.max(0, Math.min(1, vol));
-  s.play().catch(() => { });
+  playSample(s, vol, pan);
 }
 
-export function playSound_Explosion(vol = 1) {
+export function playSound_Explosion(vol = 1, pan = 0) {
   const s = assets.sounds.explosion.cloneNode(true);
-  s.volume = Math.max(0, Math.min(1, vol));
-  s.play().catch(() => { });
+  playSample(s, vol, pan);
 }
 
 const brickHitVariants = ['brickHit1', 'brickHit2', 'brickHit3'];
-export function playSound_BrickHit(vol = 1) {
+export function playSound_BrickHit(vol = 1, pan = 0) {
   const key = brickHitVariants[Math.floor(Math.random() * 3)];
   const s = assets.sounds[key].cloneNode(true);
-  s.volume = vol * 0.35;
   s.playbackRate = 0.9 + Math.random() * 0.5; // pitch 0.9–1.4
-  s.play().catch(() => { });
+  playSample(s, vol * 0.35, pan);
 }
 
-export function playSound_Heal(vol = 1) {
+export function playSound_StoneHit(vol = 1, pan = 0) {
+  const s = assets.sounds.brickHit1.cloneNode(true);
+  s.playbackRate = 0.9 + Math.random() * 0.5;
+  playSample(s, vol * 0.35, pan);
+}
+
+export function playSound_Heal(vol = 1, pan = 0) {
   const s = assets.sounds.repair.cloneNode(true);
-  s.volume = Math.max(0, Math.min(1, vol));
-  s.play().catch(() => { });
+  playSample(s, vol, pan);
 }
 
 export function playSound_Speed() {
@@ -67,9 +125,9 @@ export function playSound_Smoke() {
   tone(100, 0.3, 'sine', 0.1);
 }
 
-export function playBombBeep(vol = 1) {
+export function playBombBeep(vol = 1, pan = 0) {
   const v = 0.15 * Math.max(0, Math.min(1, vol));
-  for (let i = 0; i < 5; i++) tone(1500, 0.05, 'square', v, null, i * 0.1);
+  for (let i = 0; i < 5; i++) tone(1500, 0.05, 'square', v, null, i * 0.1, pan);
 }
 
 export function playAlert() {
@@ -77,7 +135,7 @@ export function playAlert() {
   tone(880, 0.2, 'sawtooth', 0.1, null, 0.25);
 }
 
-export function playRocketFlyBy() {
+export function playRocketFlyBy(pan = 0) {
   if (!audioCtx || !masterGain) return;
   const len = audioCtx.sampleRate * 2;
   const buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
@@ -89,12 +147,14 @@ export function playRocketFlyBy() {
   flt.type = 'bandpass';
   flt.frequency.value = 1200;
   flt.Q.value = 2;
+  const panner = audioCtx.createStereoPanner();
+  panner.pan.value = Math.max(-1, Math.min(1, pan));
   const g = audioCtx.createGain();
   g.gain.setValueAtTime(0.001, audioCtx.currentTime);
-  g.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 1);
-  g.gain.linearRampToValueAtTime(0.001, audioCtx.currentTime + 2);
+  g.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 2);
   src.connect(flt);
-  flt.connect(g);
+  flt.connect(panner);
+  panner.connect(g);
   g.connect(masterGain);
   src.start();
   src.stop(audioCtx.currentTime + 2);
@@ -137,7 +197,7 @@ export function playSound_StartMusic() {
   });
 }
 
-export function noise(d, f, q, v, t, dec) {
+export function noise(d, f, q, v, t, dec, pan = 0) {
   if (!audioCtx || !masterGain) return;
   const len = audioCtx.sampleRate * d;
   const buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
@@ -149,26 +209,32 @@ export function noise(d, f, q, v, t, dec) {
   flt.type = t;
   flt.frequency.value = f;
   flt.Q.value = q;
+  const panner = audioCtx.createStereoPanner();
+  panner.pan.value = Math.max(-1, Math.min(1, pan));
   const g = audioCtx.createGain();
   g.gain.setValueAtTime(v, audioCtx.currentTime);
   g.gain.setTargetAtTime(0.001, audioCtx.currentTime, dec);
   src.connect(flt);
-  flt.connect(g);
+  flt.connect(panner);
+  panner.connect(g);
   g.connect(masterGain);
   src.start();
   src.stop(audioCtx.currentTime + d);
 }
 
-export function tone(f, d, ty, v, s = null, delay = 0) {
+export function tone(f, d, ty, v, s = null, delay = 0, pan = 0) {
   if (!audioCtx || !masterGain) return;
   const o = audioCtx.createOscillator();
+  const panner = audioCtx.createStereoPanner();
+  panner.pan.value = Math.max(-1, Math.min(1, pan));
   const g = audioCtx.createGain();
   o.type = ty;
   o.frequency.setValueAtTime(f, audioCtx.currentTime + delay);
   if (s) o.frequency.setTargetAtTime(s, audioCtx.currentTime + delay, d * 0.4);
   g.gain.setValueAtTime(v, audioCtx.currentTime + delay);
   g.gain.setTargetAtTime(0.001, audioCtx.currentTime + delay, d * 0.5);
-  o.connect(g);
+  o.connect(panner);
+  panner.connect(g);
   g.connect(masterGain);
   o.start(audioCtx.currentTime + delay);
   o.stop(audioCtx.currentTime + delay + d);

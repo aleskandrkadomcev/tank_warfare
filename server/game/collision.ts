@@ -1,4 +1,6 @@
 import { BRICK_SIZE } from '#shared/map.js';
+import { getStoneWorldCircles } from '#shared/stoneData.js';
+import type { StonePos } from '#shared/stoneData.js';
 import type { BrickPos } from '../ws/lobbyStore.js';
 
 export const SAT_EPS = 1e-4;
@@ -196,4 +198,97 @@ export function separateTankFromBricks(
         tank.x += (dx / d) * 1.25;
         tank.y += (dy / d) * 1.25;
     }
+}
+
+// --- Камни (круглые хитбоксы) ---
+
+/** OBB (танк) vs Circle: ближайшая точка OBB к центру круга, расстояние < r = коллизия. */
+export function obbIntersectsCircle(
+    tx: number, ty: number, angle: number, hw: number, hh: number,
+    cx: number, cy: number, r: number,
+): boolean {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    // Переводим центр круга в локальные координаты OBB
+    const dx = cx - tx;
+    const dy = cy - ty;
+    const localX = dx * cos + dy * sin;
+    const localY = -dx * sin + dy * cos;
+    // Ближайшая точка на OBB
+    const closestX = Math.max(-hw, Math.min(hw, localX));
+    const closestY = Math.max(-hh, Math.min(hh, localY));
+    const distX = localX - closestX;
+    const distY = localY - closestY;
+    return distX * distX + distY * distY < r * r;
+}
+
+/** Точка внутри круга (для пуль). */
+export function pointInCircle(px: number, py: number, cx: number, cy: number, r: number): boolean {
+    const dx = px - cx;
+    const dy = py - cy;
+    return dx * dx + dy * dy <= r * r;
+}
+
+/** Проверяет пулю (точка) против всех камней. Возвращает true при попадании. */
+export function checkBulletStoneCollision(bx: number, by: number, stones: StonePos[]): boolean {
+    for (const stone of stones) {
+        const circles = getStoneWorldCircles(stone);
+        for (const c of circles) {
+            if (pointInCircle(bx, by, c.cx, c.cy, c.r)) return true;
+        }
+    }
+    return false;
+}
+
+/** Проверяет танк (OBB) против всех камней. Возвращает true при коллизии. */
+export function tankStoneCollision(
+    tx: number, ty: number, angle: number, hw: number, hh: number, stones: StonePos[],
+): boolean {
+    for (const stone of stones) {
+        const circles = getStoneWorldCircles(stone);
+        for (const c of circles) {
+            if (obbIntersectsCircle(tx, ty, angle, hw, hh, c.cx, c.cy, c.r)) return true;
+        }
+    }
+    return false;
+}
+
+/** Выталкивание танка из камней. */
+export function separateTankFromStones(tank: TankLike, stones: StonePos[]): void {
+    const { hw, hh } = getTankHullHalfExtents(tank);
+    for (let iter = 0; iter < 20; iter++) {
+        let pushed = false;
+        for (const stone of stones) {
+            const circles = getStoneWorldCircles(stone);
+            for (const c of circles) {
+                if (obbIntersectsCircle(tank.x, tank.y, tank.angle, hw, hh, c.cx, c.cy, c.r)) {
+                    const dx = tank.x - c.cx;
+                    const dy = tank.y - c.cy;
+                    const d = Math.hypot(dx, dy) || 1;
+                    tank.x += (dx / d) * 1.5;
+                    tank.y += (dy / d) * 1.5;
+                    pushed = true;
+                }
+            }
+        }
+        if (!pushed) return;
+    }
+}
+
+/** Проверяет, блокирует ли камень линию видимости (для ботов). */
+export function lineBlockedByStones(x1: number, y1: number, x2: number, y2: number, stones: StonePos[]): boolean {
+    const distance = Math.hypot(x2 - x1, y2 - y1);
+    const steps = Math.max(1, Math.ceil(distance / 30));
+    for (let i = 1; i < steps; i++) {
+        const t = i / steps;
+        const px = x1 + (x2 - x1) * t;
+        const py = y1 + (y2 - y1) * t;
+        for (const stone of stones) {
+            const circles = getStoneWorldCircles(stone);
+            for (const c of circles) {
+                if (pointInCircle(px, py, c.cx, c.cy, c.r)) return true;
+            }
+        }
+    }
+    return false;
 }

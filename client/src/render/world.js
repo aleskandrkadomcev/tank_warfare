@@ -187,6 +187,116 @@ export function drawForests(ctx, forests, forestImg) {
     }
 }
 
+const STONE_SPRITE_HALF = 75; // 150 / 2
+const STONE_SHADOW_OFFSET = 12; // ~17px по диагонали 45° (12*√2 ≈ 17)
+
+let stoneShadowCanvas = null;
+let stoneShadowCtx = null;
+let stoneShadowCacheKey = '';
+
+let stoneBodyCanvas = null;
+let stoneBodyCtx = null;
+let stoneBodyCacheKey = '';
+
+function ensureStoneShadowCanvas(w, h) {
+    if (!stoneShadowCanvas) {
+        stoneShadowCanvas = document.createElement('canvas');
+        stoneShadowCtx = stoneShadowCanvas.getContext('2d');
+    }
+    if (stoneShadowCanvas.width !== w || stoneShadowCanvas.height !== h) {
+        stoneShadowCanvas.width = w;
+        stoneShadowCanvas.height = h;
+    }
+}
+
+function ensureStoneBodyCanvas(w, h) {
+    if (!stoneBodyCanvas) {
+        stoneBodyCanvas = document.createElement('canvas');
+        stoneBodyCtx = stoneBodyCanvas.getContext('2d');
+    }
+    if (stoneBodyCanvas.width !== w || stoneBodyCanvas.height !== h) {
+        stoneBodyCanvas.width = w;
+        stoneBodyCanvas.height = h;
+    }
+}
+
+/** Запекает тени камней в offscreen-канвас (раз за раунд).
+ *  Рисуем каждый спрайт далеко за экраном, используя canvas shadow для получения
+ *  чёрного размытого силуэта со смещением. Сам спрайт уходит за clip и не виден. */
+function rebuildStoneShadowCache(stones, mapWidth, mapHeight) {
+    ensureStoneShadowCanvas(mapWidth, mapHeight);
+    stoneShadowCtx.clearRect(0, 0, mapWidth, mapHeight);
+
+    stoneShadowCtx.save();
+    stoneShadowCtx.shadowColor = 'rgba(0,0,0,0.4)';
+    stoneShadowCtx.shadowBlur = 5;
+    // Рисуем спрайт смещённым на -10000, а тень с shadowOffset попадёт на нужное место
+    const FAR = 10000;
+    for (const s of stones) {
+        const img = assets.images['stone' + s.type];
+        const imgOk = img?.complete && img.naturalWidth > 0;
+        if (!imgOk) continue;
+        const sc = s.scale ?? 1;
+        // Тень должна быть на (s.x + offset, s.y + offset), а спрайт рисуем на (s.x - FAR, s.y - FAR)
+        stoneShadowCtx.shadowOffsetX = FAR + STONE_SHADOW_OFFSET;
+        stoneShadowCtx.shadowOffsetY = FAR + STONE_SHADOW_OFFSET;
+        stoneShadowCtx.save();
+        stoneShadowCtx.translate(s.x - FAR, s.y - FAR);
+        stoneShadowCtx.rotate(s.angle);
+        stoneShadowCtx.scale(sc * 1.05, sc * 1.05);
+        stoneShadowCtx.drawImage(img, -STONE_SPRITE_HALF, -STONE_SPRITE_HALF);
+        stoneShadowCtx.restore();
+    }
+    stoneShadowCtx.restore();
+    // Очищаем область где нарисовались сами спрайты (далеко за экраном) — не нужно, они вне канваса
+}
+
+/** Запекает тела камней в offscreen-канвас (раз за раунд). */
+function rebuildStoneBodyCache(stones, mapWidth, mapHeight) {
+    ensureStoneBodyCanvas(mapWidth, mapHeight);
+    stoneBodyCtx.clearRect(0, 0, mapWidth, mapHeight);
+    for (const s of stones) {
+        const img = assets.images['stone' + s.type];
+        const imgOk = img?.complete && img.naturalWidth > 0;
+        const sc = s.scale ?? 1;
+        stoneBodyCtx.save();
+        stoneBodyCtx.translate(s.x, s.y);
+        stoneBodyCtx.rotate(s.angle);
+        stoneBodyCtx.scale(sc, sc);
+        if (imgOk) {
+            stoneBodyCtx.drawImage(img, -STONE_SPRITE_HALF, -STONE_SPRITE_HALF);
+        } else {
+            stoneBodyCtx.fillStyle = '#777';
+            stoneBodyCtx.beginPath();
+            stoneBodyCtx.arc(0, 0, 60, 0, Math.PI * 2);
+            stoneBodyCtx.fill();
+        }
+        stoneBodyCtx.restore();
+    }
+}
+
+/** Отрисовка теней камней (вызывать до танков или вместе с тенями кирпичей). */
+export function drawStoneShadows(ctx, stones, mapWidth, mapHeight) {
+    if (!Array.isArray(stones) || stones.length === 0) return;
+    const key = `${stones.length}|${mapWidth}|${mapHeight}`;
+    if (key !== stoneShadowCacheKey || stoneShadowCanvas?.width !== mapWidth || stoneShadowCanvas?.height !== mapHeight) {
+        stoneShadowCacheKey = key;
+        rebuildStoneShadowCache(stones, mapWidth, mapHeight);
+    }
+    ctx.drawImage(stoneShadowCanvas, 0, 0);
+}
+
+/** Отрисовка тел камней. */
+export function drawStones(ctx, stones, mapWidth, mapHeight) {
+    if (!Array.isArray(stones) || stones.length === 0) return;
+    const key = `${stones.length}|${mapWidth}|${mapHeight}`;
+    if (key !== stoneBodyCacheKey || stoneBodyCanvas?.width !== mapWidth || stoneBodyCanvas?.height !== mapHeight) {
+        stoneBodyCacheKey = key;
+        rebuildStoneBodyCache(stones, mapWidth, mapHeight);
+    }
+    ctx.drawImage(stoneBodyCanvas, 0, 0);
+}
+
 /** Маппинг type → ключ в assets.images */
 const BOOST_TYPE_TO_IMAGE = [
     'repairBox',   // 0 — хилка
