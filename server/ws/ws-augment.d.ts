@@ -24,6 +24,10 @@ declare module 'ws' {
         vy: number;
         hp: number;
         spawnTime: number;
+        healCount: number;
+        smokeCount: number;
+        mineCount: number;
+        rocketCount: number;
         /** Время отключения (для реконнекта). undefined = подключён. */
         disconnectedAt?: number;
         /** ID последнего атакующего (для killtracking). */

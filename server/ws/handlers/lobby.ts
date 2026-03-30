@@ -27,6 +27,7 @@ export function handleCreateLobby(wss: WebSocketServer, ws: WebSocket, data: Rec
     ws.ready = false;
     ws.color = typeof data.color === 'string' ? data.color : '#4CAF50';
     ws.camo = typeof data.camo === 'string' ? data.camo : 'none';
+    ws.tankType = typeof data.tankType === 'string' && (data.tankType === 'light' || data.tankType === 'medium' || data.tankType === 'heavy') ? data.tankType : 'medium';
     lobbies[lobbyId] = {
         hostId: ws.id,
         name: sanitizeLobbyName(data.lobbyName),
@@ -92,6 +93,7 @@ export function handleRejoinLobby(_wss: WebSocketServer, ws: WebSocket, data: Re
     ws.ready = true;
     ws.color = ghost.color;
     ws.camo = ghost.camo;
+    ws.tankType = ghost.tankType;
     ws.isInGame = true;
     ws.x = ghost.x;
     ws.y = ghost.y;
@@ -105,6 +107,10 @@ export function handleRejoinLobby(_wss: WebSocketServer, ws: WebSocket, data: Re
     ws.lastPosAt = ghost.lastPosAt;
     ws.w = ghost.w ?? 75;
     ws.h = ghost.h ?? 45;
+    ws.healCount = ghost.healCount ?? 0;
+    ws.smokeCount = ghost.smokeCount ?? 0;
+    ws.mineCount = ghost.mineCount ?? 0;
+    ws.rocketCount = ghost.rocketCount ?? 0;
     // Заменяем призрака на живой ws
     const idx = lobby.players.indexOf(ghost);
     if (idx !== -1) lobby.players[idx] = ws;
@@ -127,6 +133,8 @@ export function handleRejoinLobby(_wss: WebSocketServer, ws: WebSocket, data: Re
         team: ws.team,
         playerId: ws.id,
         color: ws.color,
+        camo: ws.camo || 'none',
+        tankType: ws.tankType || 'medium',
         scoreLimit: lobby.scoreLimit,
         spawnSlot,
         windAngle: lobby.windAngle,
@@ -135,6 +143,10 @@ export function handleRejoinLobby(_wss: WebSocketServer, ws: WebSocket, data: Re
         y: ws.y,
         angle: ws.angle,
         turretAngle: ws.turretAngle,
+        healCount: ws.healCount ?? 0,
+        smokeCount: ws.smokeCount ?? 0,
+        mineCount: ws.mineCount ?? 0,
+        rocketCount: ws.rocketCount ?? 0,
         scores: lobby.scores,
         allPlayers: lobby.players.map((pl) => ({
             id: pl.id,
@@ -142,6 +154,7 @@ export function handleRejoinLobby(_wss: WebSocketServer, ws: WebSocket, data: Re
             team: pl.team,
             color: pl.color,
             camo: pl.camo || 'none',
+            tankType: pl.tankType || 'medium',
             isBot: Boolean(pl.isBot),
         })),
         map: lobby.mapData,
@@ -163,6 +176,7 @@ export function handleJoinLobby(wss: WebSocketServer, ws: WebSocket, data: Recor
         ws.ready = false;
         ws.color = typeof data.color === 'string' ? data.color : '#f44336';
         ws.camo = typeof data.camo === 'string' ? data.camo : 'none';
+        ws.tankType = typeof data.tankType === 'string' && (data.tankType === 'light' || data.tankType === 'medium' || data.tankType === 'heavy') ? data.tankType : 'medium';
         // Новый игрок не готов — отменяем отсчёт если был
         cancelCountdown(lobby);
         lobby.players.push(ws);
@@ -190,7 +204,7 @@ export function handleUpdatePlayer(_wss: WebSocketServer, ws: WebSocket, data: R
         if (typeof data.nickname === 'string') ws.nickname = sanitizeNick(data.nickname);
         if (typeof data.color === 'string' && isValidColor(data.color)) ws.color = data.color;
         if (typeof data.camo === 'string') ws.camo = data.camo;
-        if (typeof data.tankType === 'string' && (data.tankType === 'medium' || data.tankType === 'heavy')) {
+        if (typeof data.tankType === 'string' && (data.tankType === 'light' || data.tankType === 'medium' || data.tankType === 'heavy')) {
             ws.tankType = data.tankType;
         }
         // Хост может менять настройки лобби
@@ -282,6 +296,8 @@ function doStartGame(wss: WebSocketServer, lobby: import('../lobbyStore.js').Lob
                 team: p.team,
                 playerId: p.id,
                 color: p.color,
+                camo: p.camo || 'none',
+                tankType: p.tankType || 'medium',
                 scoreLimit: lobby.scoreLimit,
                 spawnSlot,
                 windAngle,

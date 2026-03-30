@@ -84,7 +84,7 @@ export const TANK_DEFS: Record<TankType, TankDef> = {
             healCount: 0,
             smokeCount: 1,
             mineCount: 0,
-            rocketCount: 5,
+            rocketCount: 0,
         },
     },
     medium: {
@@ -113,7 +113,7 @@ export const TANK_DEFS: Record<TankType, TankDef> = {
             healCount: 1,
             smokeCount: 0,
             mineCount: 0,
-            rocketCount: 5,
+            rocketCount: 0,
         },
     },
     heavy: {
@@ -142,7 +142,7 @@ export const TANK_DEFS: Record<TankType, TankDef> = {
             healCount: 0,
             smokeCount: 0,
             mineCount: 0,
-            rocketCount: 5,
+            rocketCount: 1,
         },
     },
 };

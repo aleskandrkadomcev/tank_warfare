@@ -153,6 +153,9 @@ function handleStart(d: Record<string, unknown>) {
     }
     session.myTeam = d.team as number;
     session.myColor = d.color as string;
+    session.myCamo = (d.camo as string) || 'none';
+    session.myTankType = (d.tankType as string) || 'medium';
+    battle.tankDef = getTankDefFn(session.myTankType as any);
     session.spawnSlot = (d.spawnSlot as number) ?? 0;
     if (typeof d.scoreLimit === 'number') battle.scoreLimit = d.scoreLimit;
     if (typeof d.windAngle === 'number') level.windAngle = d.windAngle;
@@ -558,12 +561,17 @@ function handleRemoteState(d: Record<string, unknown>) {
         }
     });
     if (!battle.enemyTanks[d.id as string]) {
+        const enemyDef = d.tankType ? getTankDefFn(d.tankType as string) : null;
         battle.enemyTanks[d.id as string] = {
             ...battle.tank,
             x: d.x as number,
             y: d.y as number,
             id: d.id as string,
             team: d.team as number,
+            w: (d.w as number) ?? enemyDef?.w ?? 75,
+            h: (d.h as number) ?? enemyDef?.h ?? 45,
+            tankType: (d.tankType as string) ?? 'medium',
+            maxHp: enemyDef?.hp ?? 100,
             color: session.playerData[d.id as string]?.color || '#f44336',
             spawnImmunityTimer: (d.spawnImmunityTimer as number) || SPAWN_IMMUNITY_TIME,
             lastSeenAt: now,
@@ -666,6 +674,9 @@ function handleRejoin(d: Record<string, unknown>) {
     session.myId = d.playerId as string;
     session.myTeam = d.team as number;
     session.myColor = d.color as string;
+    session.myCamo = (d.camo as string) || 'none';
+    session.myTankType = (d.tankType as string) || 'medium';
+    battle.tankDef = getTankDefFn(session.myTankType as any);
     session.spawnSlot = (d.spawnSlot as number) ?? 0;
     if (typeof d.scoreLimit === 'number') battle.scoreLimit = d.scoreLimit;
     if (typeof d.windAngle === 'number') level.windAngle = d.windAngle;
@@ -724,6 +735,12 @@ function handleRejoin(d: Record<string, unknown>) {
         battle.tank.turretAngle = (d.turretAngle as number) ?? 0;
         battle.tank.hp = (d.hp as number) ?? battle.tank.hp;
     }
+    // Восстанавливаем расходники
+    if (d.healCount !== undefined) battle.tank.healCount = d.healCount as number;
+    if (d.smokeCount !== undefined) battle.tank.smokeCount = d.smokeCount as number;
+    if (d.mineCount !== undefined) battle.tank.mineCount = d.mineCount as number;
+    if (d.rocketCount !== undefined) battle.tank.rocketCount = d.rocketCount as number;
+    gameMessageHooks.updateInventoryUI();
 }
 
 type ServerHandler = (d: Record<string, unknown>) => void;

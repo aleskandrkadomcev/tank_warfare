@@ -454,6 +454,10 @@ export function runSimulation(dt, ctx) {
         hp: tank.hp,
         vx: tank.vx,
         vy: tank.vy,
+        healCount: tank.healCount,
+        smokeCount: tank.smokeCount,
+        mineCount: tank.mineCount,
+        rocketCount: tank.rocketCount,
     });
 
     for (let i = bullets.length - 1; i >= 0; i--) {

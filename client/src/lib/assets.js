@@ -35,6 +35,7 @@ import stone2Url from '../game-assets/images/stone2.png?url';
 import stone3Url from '../game-assets/images/stone3.png?url';
 import stone4Url from '../game-assets/images/stone4.png?url';
 import stone5Url from '../game-assets/images/stone5.png?url';
+import vignetteUrl from '../game-assets/images/vinetka.png?url';
 import repairUrl from '../game-assets/sounds/repair.mp3?url';
 import brickHit1Url from '../game-assets/sounds/brick_hit1.mp3?url';
 import brickHit2Url from '../game-assets/sounds/brick_hit2.mp3?url';
@@ -46,7 +47,7 @@ import shootHeavyUrl from '../game-assets/sounds/tank_shot2.mp3?url';
 import click1Url from '../game-assets/sounds/click1.mp3?url';
 import click2Url from '../game-assets/sounds/click2.mp3?url';
 
-const totalAssets = 47;
+const totalAssets = 48;
 let assetsLoadedCount = 0;
 
 function checkAssetsLoaded(assets) {
@@ -97,6 +98,7 @@ function createAssets() {
       stone3: new Image(),
       stone4: new Image(),
       stone5: new Image(),
+      vignette: new Image(),
     },
     sounds: {
       shoot: new Audio(),
@@ -151,6 +153,7 @@ function createAssets() {
   assets.images.stone3.src = stone3Url;
   assets.images.stone4.src = stone4Url;
   assets.images.stone5.src = stone5Url;
+  assets.images.vignette.src = vignetteUrl;
   assets.sounds.shoot.src = shootUrl;
   assets.sounds.shootHeavy.src = shootHeavyUrl;
   assets.sounds.hit.src = hitUrl;

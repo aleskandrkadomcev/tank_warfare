@@ -205,6 +205,11 @@ export function drawGameFrame(ctx, view) {
 
     ctx.restore();
 
+    // Виньетка поверх всей сцены
+    if (assets.images.vignette.complete && assets.images.vignette.naturalWidth) {
+        ctx.drawImage(assets.images.vignette, 0, 0, width, height);
+    }
+
     // Индикатор перезарядки вокруг курсора (экранные координаты)
     if (tank.hp > 0) {
         const mx = keys['MouseX'] || width / 2;

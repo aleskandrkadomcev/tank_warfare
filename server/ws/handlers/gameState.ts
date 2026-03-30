@@ -214,6 +214,10 @@ export function handleState(_wss: WebSocketServer, ws: WebSocket, data: Record<s
         ws.vx = data.vx as number;
         ws.vy = data.vy as number;
         ws.hp = data.hp as number;
+        if (data.healCount !== undefined) ws.healCount = data.healCount as number;
+        if (data.smokeCount !== undefined) ws.smokeCount = data.smokeCount as number;
+        if (data.mineCount !== undefined) ws.mineCount = data.mineCount as number;
+        if (data.rocketCount !== undefined) ws.rocketCount = data.rocketCount as number;
         ws.lastPos = {
             x: data.x as number,
             y: data.y as number,
@@ -305,6 +309,9 @@ export function broadcastIdlePlayers(lobby: Lobby): void {
             hp: ws.hp,
             vx: 0,
             vy: 0,
+            w: ws.w,
+            h: ws.h,
+            tankType: ws.tankType || 'medium',
             spawnImmunityTimer: Math.max(0, SPAWN_IMMUNITY_TIME - (now - ws.spawnTime) / 1000),
         };
 

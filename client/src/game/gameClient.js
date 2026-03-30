@@ -260,6 +260,7 @@ function createLobby() {
                 lobbyName: name,
                 color: session.myColor,
                 camo: session.myCamo || 'none',
+                tankType: document.getElementById('tankTypeSelect')?.value || 'medium',
                 mapSize: document.getElementById('mapSizeSelect')?.value || 'small',
                 scoreLimit: parseInt(document.getElementById('scoreLimitSelect')?.value || '5', 10),
             }),
@@ -280,6 +281,7 @@ function joinLobbyByCode() {
                 nickname: nick,
                 color: session.myColor,
                 camo: session.myCamo || 'none',
+                tankType: document.getElementById('tankTypeSelect')?.value || 'medium',
             }),
         300,
     );
@@ -296,6 +298,7 @@ function joinLobby(id) {
                 nickname: nick,
                 color: session.myColor,
                 camo: session.myCamo || 'none',
+                tankType: document.getElementById('tankTypeSelect')?.value || 'medium',
             }),
         300,
     );
