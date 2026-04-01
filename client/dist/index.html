@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tanks: Warfare 3v3</title>
+  <script type="module" crossorigin src="/assets/index-C01WJzjP.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-YLjIejRt.css">
+</head>
+
+<body>
+  <div id="menu">
+    <h2>TANKS: WARFARE</h2>
+    <input type="text" id="nicknameInput" placeholder="Твой никнейм" maxlength="12" />
+    <br />
+    <input type="text" id="lobbyNameInput" placeholder="Название лобби (макс. 30)" maxlength="30"
+      style="width: 250px" />
+    <button id="btnCreate" type="button">➕ СОЗДАТЬ ЛОББИ</button>
+    <br /><br />
+    <div style="text-align: left; font-size: 14px; color: #aaa; margin: 10px 0">📋 Доступные лобби:</div>
+    <div id="lobbyList" style="max-height: 200px; overflow-y: auto; text-align: left"></div>
+    <br />
+    <input type="text" id="roomIdInput" placeholder="Или код лобби" style="width: 150px" />
+    <button id="btnJoin" type="button">🔗 ВОЙТИ ПО КОДУ</button>
+    <div id="status" class="status"></div>
+  </div>
+  <div id="lobby-wrapper">
+  <div id="lobby">
+    <h2>ЛОББИ: <span id="lobbyNameDisplay"></span></h2>
+    <div style="color: #ffeb3b; font-size: 18px; margin: 5px 0">Код: <span id="roomCodeDisplay"></span></div>
+    <div style="margin: 15px 0">
+      <div style="font-size: 14px; color: #aaa; margin-bottom: 5px">Твой никнейм:</div>
+      <input type="text" id="lobbyNickInput" maxlength="12" style="width: 150px" />
+    </div>
+    <div class="tank-customizer">
+      <div class="customizer-col">
+        <div style="font-size: 14px; color: #aaa; margin-bottom: 5px">Цвет:</div>
+        <div id="colorSelect" class="color-picker"></div>
+      </div>
+      <div class="customizer-col">
+        <div style="font-size: 14px; color: #aaa; margin-bottom: 5px">Камуфляж:</div>
+        <div id="camoSelect" class="custom-dropdown"></div>
+      </div>
+      <div class="customizer-col">
+        <div style="font-size: 14px; color: #aaa; margin-bottom: 5px">Тип:</div>
+        <div id="tankTypeSelect" class="custom-dropdown"></div>
+      </div>
+      <div class="customizer-col">
+        <canvas id="tankPreview" width="120" height="80"></canvas>
+      </div>
+    </div>
+    <div id="mapSizeSelector" style="margin: 15px 0">
+      <div style="font-size: 14px; color: #aaa; margin-bottom: 5px">Размер карты:</div>
+      <select id="mapSizeSelect" style="padding: 5px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px">
+        <option value="small">Маленькая (3200×1800)</option>
+        <option value="medium">Средняя (4160×2340)</option>
+        <option value="large">Большая (5120×2880)</option>
+      </select>
+    </div>
+    <div id="scoreLimitSelector" style="margin: 15px 0">
+      <div style="font-size: 14px; color: #aaa; margin-bottom: 5px">Очков для победы:</div>
+      <select id="scoreLimitSelect" style="padding: 5px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px">
+        <option value="3">3</option>
+        <option value="5" selected>5</option>
+        <option value="10">10</option>
+        <option value="15">15</option>
+        <option value="20">20</option>
+      </select>
+    </div>
+    <div class="lobby-teams">
+      <div style="flex: 1">
+        <h3 style="color: #4caf50; margin: 5px 0">🟢 Команда 1</h3>
+        <div id="team1-list"></div>
+      </div>
+      <div style="flex: 1">
+        <h3 style="color: #f44336; margin: 5px 0">🔴 Команда 2</h3>
+        <div id="team2-list"></div>
+      </div>
+    </div>
+    <div class="lobby-controls">
+      <button class="team-btn t1" type="button">В команду 1</button>
+      <button class="team-btn t2" type="button">В команду 2</button>
+      <br />
+      <button id="btnReady" class="ready-btn" type="button">Готов</button>
+      <button id="btnStart" type="button" style="display: none; background: #ffeb3b; color: #000; margin-left: 10px">
+        🎮 НАЧАТЬ БОЙ
+      </button>
+      <button id="btnAddBot" type="button" style="display: none; margin-left: 10px">🤖 ДОБАВИТЬ БОТА</button>
+      <button id="btnRemoveBot" type="button" style="display: none; margin-left: 10px">🗑 УБРАТЬ БОТА</button>
+      <button id="btnLeaveLobby" type="button" style="margin-left: 10px; background: #666; color: #fff">Выйти</button>
+    </div>
+    <div id="lobby-status" class="status"></div>
+  </div>
+  <div id="lobby-chat">
+    <h3 style="color: #aaa; margin: 0 0 10px 0; font-size: 14px">Чат</h3>
+    <div id="lobby-chat-log"></div>
+    <div id="lobby-chat-input-row">
+      <input type="text" id="lobby-chat-input" placeholder="Сообщение..." maxlength="200" />
+      <button id="lobby-chat-send" type="button">➤</button>
+    </div>
+  </div>
+  </div>
+  <div id="volume-control">🔊 <input type="range" min="0" max="100" value="100" id="volumeSlider" /></div>
+  <div id="ui-game">
+    <div id="fps-hud" class="fps-hud" aria-live="polite"><span id="fps-value">—</span> FPS</div>
+  </div>
+  <div id="score-board">
+    <span id="score-me" style="color: #4caf50">0</span> - <span id="score-enemy" style="color: #f44336">0</span>
+    <span id="score-limit" style="color: #aaa; font-size: 14px; margin-left: 8px">/ 5</span>
+  </div>
+  <div id="boost-panel"></div>
+  <div id="boost-active-panel"></div>
+  <div id="victory-screen" class="overlay-msg">ПОБЕДА!</div>
+  <div id="death-screen" class="overlay-msg"></div>
+  <div id="tab-scoreboard">
+    <table id="tab-score-table">
+      <thead>
+        <tr>
+          <th>Никнейм</th>
+          <th>Убийства</th>
+          <th>Смерти</th>
+          <th>Урон нанесён</th>
+          <th>Урон получен</th>
+        </tr>
+      </thead>
+      <tbody id="tab-score-tbody"></tbody>
+    </table>
+  </div>
+  <div id="endgame-overlay">
+    <div id="endgame-title"></div>
+    <table id="endgame-table">
+      <thead>
+        <tr>
+          <th>Никнейм</th>
+          <th>Убийства</th>
+          <th>Смерти</th>
+          <th>Урон нанесён</th>
+          <th>Урон получен</th>
+        </tr>
+      </thead>
+      <tbody id="endgame-tbody"></tbody>
+    </table>
+    <div id="endgame-buttons">
+      <button id="btnNextRound" type="button">Начать следующий раунд</button>
+      <button id="btnExitMenu" type="button" style="background:#f44336">Выйти в меню</button>
+    </div>
+  </div>
+  <canvas id="gameCanvas"></canvas>
+</body>
+
+</html>
