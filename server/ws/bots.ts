@@ -1,7 +1,7 @@
 import { PLAYER_TANK_COLORS } from '#shared/colors.js';
 import { ClientMsg, ServerMsg } from '#shared/protocol.js';
 import type { WebSocket, WebSocketServer } from 'ws';
-import { BRICK_SIZE, FOREST_DETECTION_RADIUS_FACTOR, FOREST_SECTION_SIZE, SMOKE_CLOUD_RADIUS, SPAWN_BOX_SIZE, SPAWN_CELL_SIZE, SPAWN_ORDER, TANK_MAX_HP } from '../constants.js';
+import { BRICK_SIZE, BUSH_RADIUS, FOREST_DETECTION_RADIUS_FACTOR, SMOKE_CLOUD_RADIUS, SPAWN_BOX_SIZE, SPAWN_CELL_SIZE, SPAWN_ORDER, TANK_MAX_HP } from '../constants.js';
 import { getTankDef } from '#shared/tankDefs.js';
 import { log } from '../logger.js';
 import { broadcastGame } from './broadcast.js';
@@ -187,9 +187,13 @@ function setBotSpawnState(bot: WebSocket, lobby: Lobby): void {
     clearBotPath(bot);
 }
 
+function bushR(f: { scale?: number }): number {
+    return BUSH_RADIUS * ((f.scale ?? 0.25) / 0.25);
+}
+
 function pointInsideAnyForest(lobby: Lobby, x: number, y: number): boolean {
     const forests = lobby.mapData?.forests || [];
-    return forests.some((f) => x >= f.x && x <= f.x + FOREST_SECTION_SIZE && y >= f.y && y <= f.y + FOREST_SECTION_SIZE);
+    return forests.some((f) => Math.hypot(x - f.x, y - f.y) < bushR(f));
 }
 
 function lineCrossesForest(lobby: Lobby, x1: number, y1: number, x2: number, y2: number): boolean {
@@ -202,7 +206,7 @@ function lineCrossesForest(lobby: Lobby, x1: number, y1: number, x2: number, y2:
         const px = x1 + (x2 - x1) * t;
         const py = y1 + (y2 - y1) * t;
         for (const f of forests) {
-            if (px >= f.x && px <= f.x + FOREST_SECTION_SIZE && py >= f.y && py <= f.y + FOREST_SECTION_SIZE) return true;
+            if (Math.hypot(px - f.x, py - f.y) < bushR(f)) return true;
         }
     }
     return false;

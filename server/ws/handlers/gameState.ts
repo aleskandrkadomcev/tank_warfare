@@ -4,8 +4,8 @@ import type { WebSocket, WebSocketServer } from 'ws';
 import {
     BRICK_SIZE,
     DETECTION_MEMORY_MS,
+    BUSH_RADIUS,
     FOREST_DETECTION_RADIUS_FACTOR,
-    FOREST_SECTION_SIZE,
     MAX_SCORE,
     SMOKE_CLOUD_RADIUS,
     SPAWN_IMMUNITY_TIME,
@@ -32,10 +32,15 @@ function getSmokesCoveringPoint(lobby: (typeof lobbies)[string], x: number, y: n
     return result;
 }
 
-/** Возвращает секции леса, покрывающие точку (для исключения «своего» куста). */
+/** Радиус обнаружения куста пропорционален его scale (0.25→37.5, 0.4→60). */
+function bushR(f: { scale?: number }): number {
+    return BUSH_RADIUS * ((f.scale ?? 0.25) / 0.25);
+}
+
+/** Возвращает кусты, покрывающие точку (для исключения «своего» куста). */
 function getForestsCoveringPoint(lobby: (typeof lobbies)[string], x: number, y: number) {
     const forests = lobby.mapData?.forests || [];
-    return forests.filter((f) => x >= f.x && x <= f.x + FOREST_SECTION_SIZE && y >= f.y && y <= f.y + FOREST_SECTION_SIZE);
+    return forests.filter((f) => Math.hypot(x - f.x, y - f.y) < bushR(f));
 }
 
 function pointInsideAnySmoke(lobby: (typeof lobbies)[string], x: number, y: number, now: number, exclude?: Set<unknown>): boolean {
@@ -51,7 +56,7 @@ function pointInsideAnyForest(lobby: (typeof lobbies)[string], x: number, y: num
     const forests = lobby.mapData?.forests || [];
     return forests.some((f) => {
         if (exclude?.has(f)) return false;
-        return x >= f.x && x <= f.x + FOREST_SECTION_SIZE && y >= f.y && y <= f.y + FOREST_SECTION_SIZE;
+        return Math.hypot(x - f.x, y - f.y) < bushR(f);
     });
 }
 
@@ -83,7 +88,7 @@ function lineCrossesForest(lobby: (typeof lobbies)[string], x1: number, y1: numb
         const py = y1 + (y2 - y1) * t;
         for (const f of forests) {
             if (exclude?.has(f)) continue;
-            if (px >= f.x && px <= f.x + FOREST_SECTION_SIZE && py >= f.y && py <= f.y + FOREST_SECTION_SIZE) return true;
+            if (Math.hypot(px - f.x, py - f.y) < bushR(f)) return true;
         }
     }
     return false;

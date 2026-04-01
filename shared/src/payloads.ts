@@ -7,7 +7,7 @@ import { ClientMsg, ServerMsg } from './protocol.js';
 // --- примитивы контракта ---
 
 export type BrickPos = { x: number; y: number };
-export type ForestPos = { x: number; y: number };
+export type ForestPos = { x: number; y: number; type: number; angle: number; scale: number };
 export type StonePos = { x: number; y: number; type: number; angle: number; scale: number };
 
 export type LobbyListRow = {

@@ -1,7 +1,7 @@
 import { BRICK_SIZE, MAP_HEIGHT, MAP_WIDTH } from '#shared/map.js';
 import { STONE_HITBOXES, STONE_TYPE_COUNT, getStoneWorldCircles } from '#shared/stoneData.js';
 import type { StonePos } from '#shared/stoneData.js';
-import { FOREST_SECTION_SIZE, FOREST_SECTION_STEP, SPAWN_BOX_SIZE } from '../constants.js';
+import { BUSH_RADIUS, SPAWN_BOX_SIZE } from '../constants.js';
 import type { MapData } from '../ws/lobbyStore.js';
 
 /** Проверяет, пересекается ли AABB (x,y,w,h) со спавн-боксами. */
@@ -19,79 +19,77 @@ function pointInSpawnBox(px: number, py: number, mapW: number, mapH: number): bo
     return false;
 }
 
-const FOREST_GROUP_SIZE_MIN = 3;
-const FOREST_GROUP_SIZE_MAX = 12;
+const BUSH_MIN_COUNT = 10;
+const BUSH_MAX_COUNT = 30;
+const BUSH_MIN_DIST = 100; // мин расстояние между кустами
+const BUSH_MARGIN = 80;    // отступ от края карты
 
-function overlapsBrick(bricks: { x: number; y: number }[], fx: number, fy: number): boolean {
-    const fx2 = fx + FOREST_SECTION_SIZE;
-    const fy2 = fy + FOREST_SECTION_SIZE;
-    return bricks.some((b) => {
-        const bx2 = b.x + BRICK_SIZE;
-        const by2 = b.y + BRICK_SIZE;
-        return fx < bx2 && fx2 > b.x && fy < by2 && fy2 > b.y;
-    });
+const BUSH_SCALE_MIN = 0.25;
+const BUSH_SCALE_MAX = 0.40;
+
+/** Радиус обнаружения куста зависит от его скейла: scale 0.25→r=37.5, scale 0.4→r=60 */
+function bushDetectionRadius(scale: number): number {
+    return BUSH_RADIUS * (scale / BUSH_SCALE_MIN);
 }
 
-function isInsideMap(x: number, y: number, w: number, h: number): boolean {
-    return x >= 0 && y >= 0 && x + FOREST_SECTION_SIZE <= w && y + FOREST_SECTION_SIZE <= h;
-}
+function generateBushes(
+    bricks: { x: number; y: number }[],
+    stones: StonePos[],
+    mapW: number,
+    mapH: number,
+): { x: number; y: number; type: number; angle: number; scale: number }[] {
+    const bushes: { x: number; y: number; type: number; angle: number; scale: number }[] = [];
+    const count = BUSH_MIN_COUNT + Math.floor(Math.random() * (BUSH_MAX_COUNT - BUSH_MIN_COUNT + 1));
 
-function forestKey(x: number, y: number): string {
-    return `${x}:${y}`;
-}
-
-function tryGenerateForestGroups(bricks: { x: number; y: number }[], mapW: number, mapH: number, forestGroupsMax: number): { x: number; y: number }[] {
-    const forests: { x: number; y: number }[] = [];
-    const used = new Set<string>();
-    const groupsCount = Math.floor(Math.random() * (forestGroupsMax - 1 + 1)) + 1;
-
-    for (let groupIndex = 0; groupIndex < groupsCount; groupIndex++) {
-        const groupSize =
-            Math.floor(Math.random() * (FOREST_GROUP_SIZE_MAX - FOREST_GROUP_SIZE_MIN + 1)) + FOREST_GROUP_SIZE_MIN;
+    for (let i = 0; i < count; i++) {
         let placed = false;
+        for (let att = 0; att < 80 && !placed; att++) {
+            const bx = BUSH_MARGIN + Math.random() * (mapW - BUSH_MARGIN * 2);
+            const by = BUSH_MARGIN + Math.random() * (mapH - BUSH_MARGIN * 2);
+            const sc = BUSH_SCALE_MIN + Math.random() * (BUSH_SCALE_MAX - BUSH_SCALE_MIN);
+            const r = bushDetectionRadius(sc);
 
-        for (let attempts = 0; attempts < 120 && !placed; attempts++) {
-            const startX = Math.floor(Math.random() * (mapW - FOREST_SECTION_SIZE));
-            const startY = Math.floor(Math.random() * (mapH - FOREST_SECTION_SIZE));
-            const sx = Math.floor(startX / FOREST_SECTION_STEP) * FOREST_SECTION_STEP;
-            const sy = Math.floor(startY / FOREST_SECTION_STEP) * FOREST_SECTION_STEP;
-            if (!isInsideMap(sx, sy, mapW, mapH) || overlapsBrick(bricks, sx, sy)) continue;
-            if (used.has(forestKey(sx, sy))) continue;
+            // Не в спавн-боксах
+            if (pointInSpawnBox(bx, by, mapW, mapH)) continue;
 
-            const group: { x: number; y: number }[] = [{ x: sx, y: sy }];
-            const local = new Set<string>([forestKey(sx, sy)]);
-            const frontier: { x: number; y: number }[] = [{ x: sx, y: sy }];
+            // Не пересекаемся с кирпичами (круг vs AABB)
+            if (circleOverlapsBrick(bx, by, r + 10, bricks)) continue;
 
-            while (group.length < groupSize && frontier.length > 0) {
-                const base = frontier[Math.floor(Math.random() * frontier.length)];
-                const dirs = [
-                    { x: FOREST_SECTION_STEP, y: 0 },
-                    { x: -FOREST_SECTION_STEP, y: 0 },
-                    { x: 0, y: FOREST_SECTION_STEP },
-                    { x: 0, y: -FOREST_SECTION_STEP },
-                ];
-                const dir = dirs[Math.floor(Math.random() * dirs.length)];
-                const nx = base.x + dir.x;
-                const ny = base.y + dir.y;
-                const key = forestKey(nx, ny);
-                if (!isInsideMap(nx, ny, mapW, mapH)) continue;
-                if (local.has(key) || used.has(key)) continue;
-                if (overlapsBrick(bricks, nx, ny)) continue;
-                group.push({ x: nx, y: ny });
-                local.add(key);
-                frontier.push({ x: nx, y: ny });
+            // Не пересекаемся с камнями
+            let stoneOverlap = false;
+            for (const s of stones) {
+                const circles = getStoneWorldCircles(s);
+                for (const c of circles) {
+                    if (Math.hypot(bx - c.cx, by - c.cy) < r + c.r + 10) {
+                        stoneOverlap = true;
+                        break;
+                    }
+                }
+                if (stoneOverlap) break;
             }
+            if (stoneOverlap) continue;
 
-            if (group.length >= FOREST_GROUP_SIZE_MIN) {
-                group.forEach((cell) => {
-                    forests.push(cell);
-                    used.add(forestKey(cell.x, cell.y));
-                });
-                placed = true;
+            // Не слишком близко к другим кустам
+            let tooClose = false;
+            for (const ob of bushes) {
+                if (Math.hypot(bx - ob.x, by - ob.y) < BUSH_MIN_DIST) {
+                    tooClose = true;
+                    break;
+                }
             }
+            if (tooClose) continue;
+
+            bushes.push({
+                x: bx,
+                y: by,
+                type: Math.random() < 0.5 ? 2 : 3,
+                angle: Math.random() * Math.PI * 2,
+                scale: sc,
+            });
+            placed = true;
         }
     }
-    return forests;
+    return bushes;
 }
 
 export function generateMapData(mapSize?: string): MapData {
@@ -104,7 +102,7 @@ export function generateMapData(mapSize?: string): MapData {
     const biome = 0;
     const buildings: { x: number; y: number; w: number; h: number }[] = [];
     const buildingCount = mapSize === 'large' ? 24 : mapSize === 'medium' ? 20 : 15;
-    const forestGroupsMax = mapSize === 'large' ? 7 : mapSize === 'medium' ? 5 : 4;
+    // forestGroupsMax убран — кусты генерируются как отдельные объекты
 
     for (let i = 0; i < buildingCount; i++) {
         const w = (Math.floor(Math.random() * 4) + 3) * BRICK_SIZE;
@@ -145,8 +143,8 @@ export function generateMapData(mapSize?: string): MapData {
         }
     }
 
-    const forests = tryGenerateForestGroups(bricks, mapW, mapH, forestGroupsMax);
     const stones = generateStoneClusters(bricks, mapW, mapH, mapSize);
+    const forests = generateBushes(bricks, stones, mapW, mapH);
     return { bricks, forests, stones, biome, w: mapW, h: mapH };
 }
 

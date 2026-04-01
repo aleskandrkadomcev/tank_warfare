@@ -2,7 +2,7 @@ import type { WebSocket } from 'ws';
 import type { BotPathGrid } from '../game/pathfinding.js';
 
 export type BrickPos = { x: number; y: number };
-export type ForestPos = { x: number; y: number };
+export type ForestPos = { x: number; y: number; type: number; angle: number; scale: number };
 export type StonePos = { x: number; y: number; type: number; angle: number; scale: number };
 
 export type MapData = {
