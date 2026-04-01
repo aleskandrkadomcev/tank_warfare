@@ -3,6 +3,11 @@
  */
 import { assets } from '../lib/assets.js';
 import { getTankSkin } from './tankSkin.js';
+import { renderFlashOverlay } from './lightingRenderer.js';
+
+const FLASH_RADIUS = 250;          // макс дистанция вспышки
+const REALISTIC_SCALE = 1 / 2.5;
+const REALISTIC_TYPES = new Set(['medium']);
 
 /**
  * @param {CanvasRenderingContext2D} ctx
@@ -34,7 +39,7 @@ export function drawTankShadow(ctx, t) {
 }
 
 export function drawTank(ctx, t) {
-    const skin = getTankSkin(t.color, t.camo || 'none', t.tankType || 'medium');
+    const skin = getTankSkin(t.color, t.camo || 'none', t.tankType || 'medium', t.angle, t.turretAngle);
 
     ctx.save();
     ctx.translate(t.x, t.y);
@@ -65,10 +70,26 @@ export function drawTank(ctx, t) {
     }
     ctx.restore();
 
+    // ── Тень башни (между корпусом и башней) ──
     const ttype = t.tankType || 'medium';
     const turretOff = ttype === 'light' ? -2 : ttype === 'heavy' ? -4 : 4;
+    const turX = t.x + Math.cos(t.angle) * turretOff;
+    const turY = t.y + Math.sin(t.angle) * turretOff;
+
+    if (ttype === 'medium') {
+        const shadowImg = assets.images.tankTurretShadow;
+        if (shadowImg?.complete && shadowImg.naturalWidth) {
+            ctx.save();
+            ctx.translate(turX + 3, turY + 3);
+            ctx.rotate(t.turretAngle);
+            ctx.drawImage(shadowImg, -shadowImg.naturalWidth / 2, -shadowImg.naturalHeight / 2);
+            ctx.restore();
+        }
+    }
+
+    // ── Башня ──
     ctx.save();
-    ctx.translate(t.x + Math.cos(t.angle) * turretOff, t.y + Math.sin(t.angle) * turretOff);
+    ctx.translate(turX, turY);
     ctx.rotate(t.turretAngle);
 
     if (skin) {
@@ -95,6 +116,91 @@ export function drawTank(ctx, t) {
         ctx.fillStyle = isAlly ? '#4CAF50' : '#f44336';
         ctx.fillRect(t.x - 20, t.y - 30, (t.hp / maxHp) * 40, 5);
     }
+}
+
+/**
+ * Рисует подсветку вспышки на танках через normal map.
+ * Вызывать ПОСЛЕ отрисовки всех танков.
+ */
+export function drawTankFlashLighting(ctx, particles, tank, enemyTanks) {
+    // Собираем активные вспышки
+    const flashes = [];
+    for (const p of particles) {
+        if (p.type === 'muzzle_flash' && p.life > 0.01) {
+            flashes.push(p);
+        }
+    }
+    if (flashes.length === 0) return;
+
+    const allTanks = [tank];
+    for (const id in enemyTanks) {
+        if (enemyTanks[id].hp > 0) allTanks.push(enemyTanks[id]);
+    }
+
+    const prevComp = ctx.globalCompositeOperation;
+    ctx.globalCompositeOperation = 'lighter';
+
+    for (const flash of flashes) {
+        const intensity = Math.min(flash.life / (flash.maxLife || 0.14), 1) * 2.0; // яркость затухает (макс 2.0)
+
+        for (const t of allTanks) {
+            if (t.hp <= 0) continue;
+            if (!REALISTIC_TYPES.has(t.tankType || 'medium')) continue;
+
+            const baseNM = assets.images.tankBaseNM;
+            const turNM = assets.images.tankTurretNM;
+            const baseImg = assets.images.tankBase;
+            const turImg = assets.images.tankTurret;
+            if (!baseNM?.complete || !turNM?.complete) continue;
+
+            // ── Корпус ──
+            const dx = flash.x - t.x;
+            const dy = flash.y - t.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < FLASH_RADIUS) {
+                // Мировые координаты → локальные координаты спрайта (от центра, в пикселях)
+                const cosA = Math.cos(-t.angle);
+                const sinA = Math.sin(-t.angle);
+                const localX = (cosA * dx - sinA * dy) * REALISTIC_SCALE;
+                const localY = (sinA * dx + cosA * dy) * REALISTIC_SCALE;
+
+                const overlay = renderFlashOverlay(baseImg, baseNM, REALISTIC_SCALE, localX, localY, intensity);
+                if (overlay) {
+                    ctx.save();
+                    ctx.translate(t.x, t.y);
+                    ctx.rotate(t.angle);
+                    ctx.drawImage(overlay, -overlay.width / 2, -overlay.height / 2);
+                    ctx.restore();
+                }
+            }
+
+            // ── Башня ──
+            const ttype = t.tankType || 'medium';
+            const turretOff = ttype === 'light' ? -2 : ttype === 'heavy' ? -4 : 4;
+            const turCX = t.x + Math.cos(t.angle) * turretOff;
+            const turCY = t.y + Math.sin(t.angle) * turretOff;
+            const tdx = flash.x - turCX;
+            const tdy = flash.y - turCY;
+            const tdist = Math.sqrt(tdx * tdx + tdy * tdy);
+            if (tdist < FLASH_RADIUS) {
+                const cosT = Math.cos(-t.turretAngle);
+                const sinT = Math.sin(-t.turretAngle);
+                const tlocalX = (cosT * tdx - sinT * tdy) * REALISTIC_SCALE;
+                const tlocalY = (sinT * tdx + cosT * tdy) * REALISTIC_SCALE;
+
+                const tOverlay = renderFlashOverlay(turImg, turNM, REALISTIC_SCALE, tlocalX, tlocalY, intensity);
+                if (tOverlay) {
+                    ctx.save();
+                    ctx.translate(turCX, turCY);
+                    ctx.rotate(t.turretAngle);
+                    ctx.drawImage(tOverlay, -tOverlay.width / 2, -tOverlay.height / 2);
+                    ctx.restore();
+                }
+            }
+        }
+    }
+
+    ctx.globalCompositeOperation = prevComp;
 }
 
 export function drawDeadHull(ctx, hull) {

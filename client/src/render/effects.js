@@ -4,6 +4,7 @@
 import { BULLET_DAMAGE_BASE } from '../config/constants.js';
 import { level } from '../game/gameState.js';
 import { assets } from '../lib/assets.js';
+import { bakeLitSprite } from './lightingRenderer.js';
 
 /** Не рисуем частицы/дым с пренебрежимой непрозрачностью — экономия beginPath/arc/fill. */
 const PARTICLE_VIS_EPS = 0.002;
@@ -100,16 +101,70 @@ export function drawTracks(ctx, tracks, now, viewWorld, mapWidth, mapHeight) {
 }
 
 export function drawMuzzleFlash(ctx, particles) {
+    // 1. Пороховой дым (muzzle_smoke) — НИЖНИЙ слой, 50% начальная прозрачность
+    const greyImg = assets.images.smokeGrey;
+    const useGrey = greyImg?.complete && greyImg.naturalWidth > 0;
+    for (const p of particles) {
+        if (p.type !== 'muzzle_smoke') continue;
+        const life = Math.max(0, p.life);
+        if (life < PARTICLE_VIS_EPS) continue;
+        const maxLife = 1.2; // макс лайфтайм дыма
+        const lifeRatio = life / maxLife;
+        ctx.globalAlpha = Math.min(lifeRatio * 2, 0.5); // макс 50%
+        if (useGrey) {
+            const scale = (p.spriteScale || 1) * (1 + (1 - lifeRatio) * 0.5);
+            const w = greyImg.naturalWidth * scale;
+            const h = greyImg.naturalHeight * scale;
+            ctx.drawImage(greyImg, p.x - w / 2, p.y - h / 2, w, h);
+        } else {
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
+    // 2. Фаербол (muzzle) — размытые круги с белым центром → оранж краями, скейл 1.3-2×
     for (const p of particles) {
         if (p.type !== 'muzzle') continue;
         const life = Math.max(0, p.life);
         if (life < PARTICLE_VIS_EPS) continue;
-        ctx.fillStyle = p.color;
-        ctx.globalAlpha = life;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-        ctx.fill();
+        const maxLife = 0.25;
+        const lifeRatio = Math.min(life / maxLife, 1);
+        // Скейл: от 1.3 (начало) до 2.0 (конец жизни)
+        const scaleFactor = 1.3 + (1 - lifeRatio) * 0.7;
+        const radius = p.size * scaleFactor;
+        ctx.globalAlpha = Math.min(lifeRatio * 4, 0.5); // макс 50%
+        // Радиальный градиент: широкий белый центр → тонкий оранж край
+        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius);
+        grad.addColorStop(0, `rgba(255,255,250,${(0.5 * 0.95).toFixed(2)})`);
+        grad.addColorStop(0.55, `rgba(255,240,200,${(0.5 * 0.7).toFixed(2)})`);
+        grad.addColorStop(0.8, `rgba(255,180,60,${(0.5 * 0.3).toFixed(2)})`);
+        grad.addColorStop(1, `rgba(255,140,0,0)`);
+        ctx.fillStyle = grad;
+        ctx.fillRect(p.x - radius, p.y - radius, radius * 2, radius * 2);
     }
+
+    // 3. Яркая вспышка-spotlight (muzzle_flash) — движется, дольше, радиус ×1.5, additive
+    const prevComposite = ctx.globalCompositeOperation;
+    ctx.globalCompositeOperation = 'lighter';
+    for (const p of particles) {
+        if (p.type !== 'muzzle_flash') continue;
+        const life = Math.max(0, p.life);
+        if (life < PARTICLE_VIS_EPS) continue;
+        const maxLife = p.maxLife || 0.14;
+        const t = Math.max(0, 1 - (life / maxLife));
+        const radius = Math.max(1, p.size + t * 105);
+        const alpha = Math.min(life / maxLife, 1);  // 1→0
+        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius);
+        grad.addColorStop(0, `rgba(255,240,120,${(alpha * 0.95).toFixed(2)})`);
+        grad.addColorStop(0.25, `rgba(255,210,60,${(alpha * 0.5).toFixed(2)})`);
+        grad.addColorStop(1, 'rgba(255,180,30,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(p.x - radius, p.y - radius, radius * 2, radius * 2);
+    }
+    ctx.globalCompositeOperation = prevComposite;
+
     ctx.globalAlpha = 1;
 }
 
@@ -131,7 +186,7 @@ export function drawParticlesDirt(ctx, particles) {
 
 export function drawParticlesSparks(ctx, particles) {
     for (const p of particles) {
-        if (p.type !== 'smoke' && p.type !== 'fire_smoke' && p.type !== 'dark_smoke' && p.type !== 'dirt' && p.type !== 'muzzle') {
+        if (p.type !== 'smoke' && p.type !== 'fire_smoke' && p.type !== 'dark_smoke' && p.type !== 'dirt' && p.type !== 'muzzle' && p.type !== 'muzzle_flash' && p.type !== 'muzzle_smoke' && p.type !== 'spark_hit' && p.type !== 'exhaust' && !p.type.startsWith('expl_')) {
             const life = Math.max(0, p.life);
             if (life < PARTICLE_VIS_EPS) continue;
             ctx.fillStyle = p.color;
@@ -140,6 +195,24 @@ export function drawParticlesSparks(ctx, particles) {
             ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
             ctx.fill();
         }
+    }
+    ctx.globalAlpha = 1;
+}
+
+/** Выхлопные газы — размытые серые круги */
+export function drawExhaust(ctx, particles) {
+    for (const p of particles) {
+        if (p.type !== 'exhaust') continue;
+        const life = Math.max(0, p.life);
+        if (life < PARTICLE_VIS_EPS) continue;
+        const r = p.size;
+        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
+        grad.addColorStop(0, `rgba(80,80,80,${(life * 0.6).toFixed(2)})`);
+        grad.addColorStop(1, 'rgba(80,80,80,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+        ctx.fill();
     }
     ctx.globalAlpha = 1;
 }
@@ -252,16 +325,176 @@ export function drawDarkSmokeParticles(ctx, particles) {
     ctx.globalAlpha = 1;
 }
 
+/** Взрывная волна: расширяющееся белое кольцо (прозрачный центр → белые края), additive */
 export function drawExplosions(ctx, explosions) {
+    const prevComp = ctx.globalCompositeOperation;
+    ctx.globalCompositeOperation = 'lighter';
     explosions.forEach((e) => {
-        const pr = e.time / e.maxTime;
-        if (pr < 0.33) {
-            ctx.fillStyle = `rgba(255,255,0,${1 - pr / 0.33})`;
+        const pr = e.time / e.maxTime; // 0→1
+        const alpha = (1 - pr) * 0.5;  // 50%→0%
+        if (alpha < 0.01) return;
+        const radius = Math.max(1, e.radius * pr);
+        const grad = ctx.createRadialGradient(e.x, e.y, 0, e.x, e.y, radius);
+        grad.addColorStop(0, 'rgba(255,255,255,0)');
+        grad.addColorStop(0.6, 'rgba(255,255,255,0)');
+        grad.addColorStop(0.85, `rgba(255,255,255,${(alpha * 0.5).toFixed(2)})`);
+        grad.addColorStop(1, `rgba(255,255,255,${alpha.toFixed(2)})`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, radius, 0, Math.PI * 2);
+        ctx.fill();
+    });
+    ctx.globalCompositeOperation = prevComp;
+}
+
+/** Пыль взрыва — размытые светло-коричневые круги, статичные */
+export function drawExplosionDust(ctx, particles) {
+    for (const p of particles) {
+        if (p.type !== 'expl_dust') continue;
+        const life = Math.max(0, p.life);
+        if (life < PARTICLE_VIS_EPS) continue;
+        const lifeRatio = life / 4; // maxLife=4
+        ctx.globalAlpha = Math.min(lifeRatio * 2, 0.75); // 75%→0
+        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size / 2);
+        grad.addColorStop(0, 'rgba(121,102,71,0.75)');
+        grad.addColorStop(1, 'rgba(121,102,71,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+    }
+    ctx.globalAlpha = 1;
+}
+
+/** Куски земли — тёмные точки с fade-out */
+export function drawExplosionDirt(ctx, particles) {
+    for (const p of particles) {
+        if (p.type !== 'expl_dirt') continue;
+        const life = Math.max(0, p.life);
+        if (life < PARTICLE_VIS_EPS) continue;
+        ctx.globalAlpha = Math.min(life / 2, 1); // 2с→0
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+}
+
+/** Дым взрыва — чёрные спрайты дыма */
+export function drawExplosionSmoke(ctx, particles) {
+    const smokeBlackImg = assets.images.smokeBlack;
+    const useSprite = smokeBlackImg?.complete && smokeBlackImg.naturalWidth > 0;
+    for (const p of particles) {
+        if (p.type !== 'expl_smoke') continue;
+        const life = Math.max(0, p.life);
+        if (life < PARTICLE_VIS_EPS) continue;
+        ctx.globalAlpha = Math.min(1, life / 4) * 0.7;
+        if (useSprite) {
+            const scale = (p.spriteScale || 1) * (1 + (1 - life / 4) * 0.5);
+            const w = smokeBlackImg.naturalWidth * scale;
+            const h = smokeBlackImg.naturalHeight * scale;
+            ctx.drawImage(smokeBlackImg, p.x - w / 2, p.y - h / 2, w, h);
+        } else {
+            ctx.fillStyle = p.color;
             ctx.beginPath();
-            ctx.arc(e.x, e.y, e.radius * (pr / 0.33), 0, Math.PI * 2);
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
             ctx.fill();
         }
-    });
+    }
+    ctx.globalAlpha = 1;
+}
+
+/** Огненные фаерболы взрыва — белый центр→оранж край, растут */
+export function drawExplosionFire(ctx, particles) {
+    for (const p of particles) {
+        if (p.type !== 'expl_fire') continue;
+        const life = Math.max(0, p.life);
+        if (life < PARTICLE_VIS_EPS) continue;
+        const maxLife = 0.7;
+        const lifeRatio = Math.min(life / maxLife, 1);
+        const radius = p.size;
+        ctx.globalAlpha = Math.min(lifeRatio * 3, 0.5);
+        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius);
+        grad.addColorStop(0, `rgba(255,255,250,${(0.5 * 0.95).toFixed(2)})`);
+        grad.addColorStop(0.55, `rgba(255,240,200,${(0.5 * 0.7).toFixed(2)})`);
+        grad.addColorStop(0.8, `rgba(255,180,60,${(0.5 * 0.3).toFixed(2)})`);
+        grad.addColorStop(1, 'rgba(255,140,0,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(p.x - radius, p.y - radius, radius * 2, radius * 2);
+    }
+    ctx.globalAlpha = 1;
+}
+
+/** Искры взрыва — белое ядро + жёлтый glow */
+export function drawExplosionSparks(ctx, particles) {
+    for (const p of particles) {
+        if (p.type !== 'expl_spark' && p.type !== 'spark_hit') continue;
+        const life = Math.max(0, p.life);
+        if (life < PARTICLE_VIS_EPS) continue;
+        const maxLife = 1.2;
+        const alpha = Math.min(life / maxLife * 2, 1);
+
+        // Жёлтый glow (размытый, больше ядра)
+        const glowR = p.size * 3;
+        const glowGrad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, glowR);
+        glowGrad.addColorStop(0, `rgba(255,220,60,${(alpha * 0.4).toFixed(2)})`);
+        glowGrad.addColorStop(1, 'rgba(255,220,60,0)');
+        ctx.fillStyle = glowGrad;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, glowR, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Ядро
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = p.color || '#fff';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+}
+
+/** Белая вспышка взрыва — 1 большой размытый круг, additive */
+export function drawExplosionFlash(ctx, particles) {
+    const prevComp = ctx.globalCompositeOperation;
+    ctx.globalCompositeOperation = 'lighter';
+    for (const p of particles) {
+        if (p.type !== 'expl_flash') continue;
+        const life = Math.max(0, p.life);
+        if (life < PARTICLE_VIS_EPS) continue;
+        const alpha = life / 0.2; // 1→0
+        const radius = p.size;
+        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius);
+        grad.addColorStop(0, `rgba(255,255,255,${(alpha * 1.0).toFixed(2)})`);
+        grad.addColorStop(0.5, `rgba(255,255,255,${(alpha * 0.5).toFixed(2)})`);
+        grad.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(p.x - radius, p.y - radius, radius * 2, radius * 2);
+    }
+    ctx.globalCompositeOperation = prevComp;
+    ctx.globalAlpha = 1;
+}
+
+/** Псевдо-освещение взрыва — большой размытый светло-жёлтый круг, additive */
+export function drawExplosionGlow(ctx, particles) {
+    const prevComp = ctx.globalCompositeOperation;
+    ctx.globalCompositeOperation = 'lighter';
+    for (const p of particles) {
+        if (p.type !== 'expl_glow') continue;
+        const life = Math.max(0, p.life);
+        if (life < PARTICLE_VIS_EPS) continue;
+        const alpha = Math.min(life / 0.3, 1) * 0.4; // макс 40%, затухает
+        const radius = p.size;
+        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius);
+        grad.addColorStop(0, `rgba(255,250,220,${alpha.toFixed(2)})`);
+        grad.addColorStop(0.5, `rgba(255,240,180,${(alpha * 0.5).toFixed(2)})`);
+        grad.addColorStop(1, 'rgba(255,230,150,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.globalCompositeOperation = prevComp;
+    ctx.globalAlpha = 1;
 }
 
 /**
@@ -350,13 +583,13 @@ export function drawCloudShadows(ctx, now, viewWorld) {
 
 export function drawExplosionMarks(ctx, marks) {
     const img = assets.images.explosionMark;
-    if (!assets.loaded || !img.complete || !img.naturalWidth) return;
+    if (!assets.loaded || !img?.complete || !img.naturalWidth) return;
     for (const m of marks) {
+        const w = img.naturalWidth * m.scale;
+        const h = img.naturalHeight * m.scale;
         ctx.save();
         ctx.translate(m.x, m.y);
         ctx.rotate(m.angle);
-        const w = img.naturalWidth * m.scale;
-        const h = img.naturalHeight * m.scale;
         ctx.drawImage(img, -w / 2, -h / 2, w, h);
         ctx.restore();
     }

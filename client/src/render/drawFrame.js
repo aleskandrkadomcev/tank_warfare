@@ -11,9 +11,17 @@ import {
     drawBullets,
     drawDarkSmokeParticles,
     drawExplosions,
+    drawExplosionDust,
+    drawExplosionDirt,
+    drawExplosionSmoke,
+    drawExplosionFire,
+    drawExplosionSparks,
+    drawExplosionFlash,
+    drawExplosionGlow,
     drawMines,
     drawExplosionMarks,
     drawMuzzleFlash,
+    drawExhaust,
     drawParticlesDirt,
     drawParticlesSmoke,
     drawParticlesSparks,
@@ -22,7 +30,7 @@ import {
     drawTracks,
     drawCloudShadows,
 } from './effects.js';
-import { drawDeadHull, drawTank, drawTankShadow } from './tank.js';
+import { drawDeadHull, drawTank, drawTankFlashLighting, drawTankShadow } from './tank.js';
 import { beginNicknameDrawPass, drawAimCrosshair, drawNickname, drawReloadIndicator, endNicknameDrawPass } from './uiOverlay.js';
 import {
     drawBoostIcon,
@@ -33,6 +41,7 @@ import {
     drawMapBackground,
     drawStoneShadows,
     drawStones,
+    drawStoneFlashLighting,
 } from './world.js';
 
 /**
@@ -110,6 +119,7 @@ export function drawGameFrame(ctx, view) {
     const halfW = width / 2 / scaleFactor;
     const halfH = height / 2 / scaleFactor;
     drawTracks(ctx, tracks, now, { camX, camY, halfW, halfH }, level.mapWidth, level.mapHeight);
+    drawExhaust(ctx, particles);
     drawParticlesDirt(ctx, particles);
 
     drawMines(ctx, mines, session.myTeam);
@@ -152,6 +162,9 @@ export function drawGameFrame(ctx, view) {
         drawTank(ctx, tank);
     }
 
+    // 2.5 Подсветка вспышкой (normal map point light)
+    drawTankFlashLighting(ctx, particles, tank, enemyTanks);
+
     // 3. Тени кирпичей — ложатся на танк
     drawBrickShadows(ctx, bricks, level.mapWidth, level.mapHeight, view.bricksDrawRevision ?? 0);
 
@@ -163,6 +176,9 @@ export function drawGameFrame(ctx, view) {
 
     // 5. Камни
     drawStones(ctx, stones, level.mapWidth, level.mapHeight);
+
+    // 5.5 Подсветка камней вспышками (normal map point light)
+    drawStoneFlashLighting(ctx, particles, stones);
 
     drawBullets(ctx, bullets);
 
@@ -180,21 +196,29 @@ export function drawGameFrame(ctx, view) {
     }
     endNicknameDrawPass(ctx);
 
-    // Тени леса — ниже леса, выше никнеймов
-    drawForestShadows(ctx, forests, assets.images.shadowForest);
-
-    // Лес
-    drawForests(ctx, forests, assets.images.forest);
-
     drawMuzzleFlash(ctx, particles);
     drawSmokes(ctx, smokes);
     drawDarkSmokeParticles(ctx, particles);
 
     drawParticlesSparks(ctx, particles);
 
-    drawExplosions(ctx, explosions);
+    // Взрыв — слои снизу вверх:
+    drawExplosions(ctx, explosions);        // взрывная волна (кольцо)
+    drawExplosionDust(ctx, particles);      // пыль
+    drawExplosionDirt(ctx, particles);      // куски земли
+    drawExplosionSmoke(ctx, particles);     // дым
+    drawExplosionFire(ctx, particles);      // фаерболы
+    drawExplosionSparks(ctx, particles);    // искры
+    drawExplosionFlash(ctx, particles);     // белая вспышка
+    drawExplosionGlow(ctx, particles);      // псевдо-освещение
 
     drawRockets(ctx, rockets, onRocketSmoke, now);
+
+    // Тени кустов — выше эффектов
+    drawForestShadows(ctx, forests);
+
+    // Кусты
+    drawForests(ctx, forests);
 
     // Тень от облаков — поверх всего
     drawCloudShadows(ctx, now, { camX, camY, halfW, halfH });

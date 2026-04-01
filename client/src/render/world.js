@@ -3,6 +3,7 @@
  */
 import { BOOST_ICON_SCALE, BRICK_SIZE } from '../config/constants.js';
 import { assets } from '../lib/assets.js';
+import { bakeLitSprite, renderFlashOverlay } from './lightingRenderer.js';
 
 let bricksCanvas = null;
 let bricksCtx = null;
@@ -157,33 +158,55 @@ export function drawBrickShadows(ctx, bricks, mapWidth, mapHeight, bricksDrawRev
     ctx.drawImage(brickShadowCanvas, 0, 0);
 }
 
+/* ── Кусты (bush2, bush3) — отдельные спрайты с рандомным углом ── */
+const BUSH_SHADOW_OFFSET = 8;
+
+function getBushImg(type) {
+    return assets.images['bush' + type];
+}
+function getBushShadowImg(type) {
+    return assets.images['bush' + type + 'Shadow'];
+}
+
 /**
- * Отрисовка леса как оверлей-текстуры секций (каждая секция: 97px, шаг 89px задаётся генератором).
- * Лес рисуется поверх карты/танков и ниже дыма абилки.
+ * Тени кустов — рисуются ПОД кустами, НАД танками/кирпичами.
  */
-/**
- * Тени леса — рисуются ПОД лесом, НАД танками/кирпичами.
- */
-export function drawForestShadows(ctx, forests, shadowForestImg) {
+export function drawForestShadows(ctx, forests) {
     if (!Array.isArray(forests) || forests.length === 0) return;
-    const imageOk = shadowForestImg?.complete && shadowForestImg.naturalWidth > 0;
-    if (!imageOk) return;
     for (const f of forests) {
-        ctx.drawImage(shadowForestImg, f.x, f.y);
+        const img = getBushShadowImg(f.type);
+        if (!img?.complete || !img.naturalWidth) continue;
+        const sc = f.scale || 0.25;
+        const w = img.naturalWidth * sc;
+        const h = img.naturalHeight * sc;
+        ctx.save();
+        ctx.translate(f.x + BUSH_SHADOW_OFFSET, f.y + BUSH_SHADOW_OFFSET);
+        ctx.rotate(f.angle);
+        ctx.drawImage(img, -w / 2, -h / 2, w, h);
+        ctx.restore();
     }
 }
 
-export function drawForests(ctx, forests, forestImg) {
+export function drawForests(ctx, forests) {
     if (!Array.isArray(forests) || forests.length === 0) return;
-    const imageOk = forestImg?.complete && forestImg.naturalWidth > 0;
     for (const f of forests) {
-        if (imageOk) {
-            ctx.drawImage(forestImg, f.x, f.y);
+        const img = getBushImg(f.type);
+        const sc = f.scale || 0.25;
+        if (!img?.complete || !img.naturalWidth) {
+            // Fallback
+            ctx.fillStyle = 'rgba(36, 92, 42, 0.45)';
+            ctx.beginPath();
+            ctx.arc(f.x, f.y, 37.5 * (sc / 0.25), 0, Math.PI * 2);
+            ctx.fill();
             continue;
         }
-        // Fallback: полупрозрачный патч леса до загрузки спрайта.
-        ctx.fillStyle = 'rgba(36, 92, 42, 0.45)';
-        ctx.fillRect(f.x, f.y, 97, 97);
+        const w = img.naturalWidth * sc;
+        const h = img.naturalHeight * sc;
+        ctx.save();
+        ctx.translate(f.x, f.y);
+        ctx.rotate(f.angle);
+        ctx.drawImage(img, -w / 2, -h / 2, w, h);
+        ctx.restore();
     }
 }
 
@@ -251,14 +274,32 @@ function rebuildStoneShadowCache(stones, mapWidth, mapHeight) {
     // Очищаем область где нарисовались сами спрайты (далеко за экраном) — не нужно, они вне канваса
 }
 
-/** Запекает тела камней в offscreen-канвас (раз за раунд). */
+/** Запекает тела камней в offscreen-канвас (раз за раунд), с нормал-мап освещением. */
 function rebuildStoneBodyCache(stones, mapWidth, mapHeight) {
     ensureStoneBodyCanvas(mapWidth, mapHeight);
     stoneBodyCtx.clearRect(0, 0, mapWidth, mapHeight);
     for (const s of stones) {
         const img = assets.images['stone' + s.type];
+        const nmImg = assets.images['stone' + s.type + 'NM'];
         const imgOk = img?.complete && img.naturalWidth > 0;
+        const nmOk = nmImg?.complete && nmImg.naturalWidth > 0;
         const sc = s.scale ?? 1;
+
+        if (imgOk && nmOk) {
+            // Запекаем с солнечным освещением через WebGL
+            const litCanvas = bakeLitSprite(img, nmImg, 1, s.angle);
+            if (litCanvas) {
+                stoneBodyCtx.save();
+                stoneBodyCtx.translate(s.x, s.y);
+                stoneBodyCtx.rotate(s.angle);
+                stoneBodyCtx.scale(sc, sc);
+                stoneBodyCtx.drawImage(litCanvas, -litCanvas.width / 2, -litCanvas.height / 2);
+                stoneBodyCtx.restore();
+                continue;
+            }
+        }
+
+        // Fallback — без освещения
         stoneBodyCtx.save();
         stoneBodyCtx.translate(s.x, s.y);
         stoneBodyCtx.rotate(s.angle);
@@ -295,6 +336,62 @@ export function drawStones(ctx, stones, mapWidth, mapHeight) {
         rebuildStoneBodyCache(stones, mapWidth, mapHeight);
     }
     ctx.drawImage(stoneBodyCanvas, 0, 0);
+}
+
+const STONE_FLASH_RADIUS = 300; // макс дистанция вспышки для камней
+
+/**
+ * Подсветка камней вспышками выстрелов (normal map point light).
+ * Вызывается после drawStones, рисуется additive поверх.
+ */
+export function drawStoneFlashLighting(ctx, particles, stones) {
+    if (!Array.isArray(stones) || stones.length === 0) return;
+
+    // Собираем активные вспышки
+    const flashes = [];
+    for (const p of particles) {
+        if (p.type === 'muzzle_flash' && p.life > 0.01) {
+            flashes.push(p);
+        }
+    }
+    if (flashes.length === 0) return;
+
+    const prevComp = ctx.globalCompositeOperation;
+    ctx.globalCompositeOperation = 'lighter';
+
+    for (const flash of flashes) {
+        const intensity = Math.min(flash.life / (flash.maxLife || 0.14), 1) * 2.0;
+
+        for (const s of stones) {
+            const dx = flash.x - s.x;
+            const dy = flash.y - s.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist >= STONE_FLASH_RADIUS) continue;
+
+            const img = assets.images['stone' + s.type];
+            const nmImg = assets.images['stone' + s.type + 'NM'];
+            if (!img?.complete || !nmImg?.complete) continue;
+
+            const sc = s.scale ?? 1;
+            // Мировые координаты вспышки → локальные координаты спрайта камня
+            const cosA = Math.cos(-s.angle);
+            const sinA = Math.sin(-s.angle);
+            const localX = (cosA * dx - sinA * dy);
+            const localY = (sinA * dx + cosA * dy);
+
+            const overlay = renderFlashOverlay(img, nmImg, 1, localX, localY, intensity);
+            if (overlay) {
+                ctx.save();
+                ctx.translate(s.x, s.y);
+                ctx.rotate(s.angle);
+                ctx.scale(sc, sc);
+                ctx.drawImage(overlay, -overlay.width / 2, -overlay.height / 2);
+                ctx.restore();
+            }
+        }
+    }
+
+    ctx.globalCompositeOperation = prevComp;
 }
 
 /** Маппинг type → ключ в assets.images */
