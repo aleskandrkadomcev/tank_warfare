@@ -39,7 +39,7 @@ import {
     tankBrickCollisionIndex,
     tankStoneCollision,
 } from './collision.js';
-import { addTrack, createSmokeCloud, spawnParticles } from './effects.js';
+import { addTrack, createBulletHitEffect, createSmokeCloud, spawnMuzzleFlash, spawnParticles } from './effects.js';
 import { battle, bumpBricksDrawRevision, level, session, world } from './gameState.js';
 
 const {
@@ -289,9 +289,11 @@ export function runSimulation(dt, ctx) {
     if (tank.hp > 0) {
         const hpPct = tank.hp / def.hp;
         if (hpPct <= 0.33) {
-            // Огонь (≤33% HP), шанс 15%
-            if (Math.random() < 0.15) spawnParticles(tank.x, tank.y, '#555', 1, 'fire_smoke');
-            if (Math.random() > 0.93) spawnParticles(tank.x, tank.y, '#ffdd00', 1, 'spark_fire');
+            // Огонь (≤33% HP) — спавн ближе к заду танка
+            const burnX = tank.x - Math.cos(tank.angle) * 18;
+            const burnY = tank.y - Math.sin(tank.angle) * 18;
+            if (Math.random() < 0.10) spawnParticles(burnX, burnY, '#555', 1, 'fire_smoke');
+            if (Math.random() > 0.965) spawnParticles(burnX, burnY, '#fff', 1, 'burn_spark');
         } else if (hpPct <= 0.66 && Math.random() > 0.96) {
             // Серый дым (33-66% HP)
             spawnParticles(tank.x, tank.y, '#888', 1, 'smoke');
@@ -303,8 +305,10 @@ export function runSimulation(dt, ctx) {
             const etMaxHp = et.maxHp || 100;
             const etPct = et.hp / etMaxHp;
             if (etPct <= 0.33) {
-                if (Math.random() < 0.15) spawnParticles(et.x, et.y, '#555', 1, 'fire_smoke');
-                if (Math.random() > 0.93) spawnParticles(et.x, et.y, '#ffdd00', 1, 'spark_fire');
+                const ebX = et.x - Math.cos(et.angle) * 18;
+                const ebY = et.y - Math.sin(et.angle) * 18;
+                if (Math.random() < 0.10) spawnParticles(ebX, ebY, '#555', 1, 'fire_smoke');
+                if (Math.random() > 0.965) spawnParticles(ebX, ebY, '#fff', 1, 'burn_spark');
             } else if (etPct <= 0.66 && Math.random() > 0.96) {
                 spawnParticles(et.x, et.y, '#888', 1, 'smoke');
             }
@@ -328,37 +332,36 @@ export function runSimulation(dt, ctx) {
     if (level.trackSpawnDist > 15) {
         const ttype = tank.tankType || 'medium';
         const off = ttype === 'heavy' ? 23 : ttype === 'light' ? 15 : 18;
-        const backOff = ttype === 'heavy' ? 15 : 0;
+        const backOff = (ttype === 'heavy' ? 15 : 0) + 20;
         const bkX = -Math.cos(tank.angle) * backOff;
         const bkY = -Math.sin(tank.angle) * backOff;
-        addTrack(
-            tank.x + bkX - Math.cos(tank.angle + Math.PI / 2) * off,
-            tank.y + bkY - Math.sin(tank.angle + Math.PI / 2) * off,
-            tank.angle, ttype,
-        );
-        addTrack(
-            tank.x + bkX - Math.cos(tank.angle - Math.PI / 2) * off,
-            tank.y + bkY - Math.sin(tank.angle - Math.PI / 2) * off,
-            tank.angle, ttype,
-        );
+        const trackLX = tank.x + bkX - Math.cos(tank.angle + Math.PI / 2) * off;
+        const trackLY = tank.y + bkY - Math.sin(tank.angle + Math.PI / 2) * off;
+        const trackRX = tank.x + bkX - Math.cos(tank.angle - Math.PI / 2) * off;
+        const trackRY = tank.y + bkY - Math.sin(tank.angle - Math.PI / 2) * off;
+        addTrack(trackLX, trackLY, tank.angle, ttype);
+        addTrack(trackRX, trackRY, tank.angle, ttype);
         level.trackSpawnDist = 0;
-        // Грязь из-под обеих гусениц сзади танка
-        const bx = -Math.cos(tank.angle) * 22;
-        const by = -Math.sin(tank.angle) * 22;
+        // Грязь из-под обеих гусениц
         if (Math.random() > 0.6) {
-            spawnParticles(
-                tank.x - Math.cos(tank.angle + Math.PI / 2) * off + bx,
-                tank.y - Math.sin(tank.angle + Math.PI / 2) * off + by,
-                '#2e2418', 1, 'dirt',
-            );
+            spawnParticles(trackLX, trackLY, '#2e2418', 1, 'dirt');
         }
         if (Math.random() > 0.6) {
-            spawnParticles(
-                tank.x - Math.cos(tank.angle - Math.PI / 2) * off + bx,
-                tank.y - Math.sin(tank.angle - Math.PI / 2) * off + by,
-                '#2e2418', 1, 'dirt',
-            );
+            spawnParticles(trackRX, trackRY, '#2e2418', 1, 'dirt');
         }
+        // Выхлопные газы из обеих гусениц
+        const exVx = -Math.cos(tank.angle) * 40;
+        const exVy = -Math.sin(tank.angle) * 40;
+        particles.push({
+            x: trackLX, y: trackLY, vx: exVx, vy: exVy,
+            life: 1, size: 10, color: 'rgba(80,80,80,1)',
+            type: 'exhaust',
+        });
+        particles.push({
+            x: trackRX, y: trackRY, vx: exVx, vy: exVy,
+            life: 1, size: 10, color: 'rgba(80,80,80,1)',
+            type: 'exhaust',
+        });
     }
 
     const mx = keys['MouseX'] || width / 2;
@@ -396,7 +399,7 @@ export function runSimulation(dt, ctx) {
         const sr = speedAbs / currentMaxSpeed;
         const sp = (Math.random() - 0.5) * sr * 5 * (Math.PI / 180) * 2;
         const a = tank.turretAngle + sp;
-        const bulletOff = tank.tankType === 'heavy' ? 60 : 55;
+        const bulletOff = tank.tankType === 'heavy' ? 60 : tank.tankType === 'medium' ? 84 : 55;
         const b = {
             x: tank.x + Math.cos(a) * bulletOff,
             y: tank.y + Math.sin(a) * bulletOff,
@@ -419,21 +422,7 @@ export function runSimulation(dt, ctx) {
             playSound_Shot(shotVol, shotPan);
         }
         triggerShake('shot');
-        spawnParticles(b.x, b.y, '#fff', 2, 'muzzle');
-        spawnParticles(b.x, b.y, '#ffaa00', 3, 'muzzle');
-        // Пороховые газы — короткий фаербол по направлению выстрела
-        for (let fi = 0; fi < 3; fi++) {
-            const fSpd = 30 + Math.random() * 50;
-            particles.push({
-                x: b.x, y: b.y,
-                vx: Math.cos(a) * fSpd + (Math.random() - 0.5) * 40,
-                vy: Math.sin(a) * fSpd + (Math.random() - 0.5) * 40,
-                life: 0.08 + Math.random() * 0.1,
-                color: `rgba(255,${130 + Math.floor(Math.random() * 80)},0,0.85)`,
-                size: Math.random() * 5 + 3,
-                type: 'muzzle',
-            });
-        }
+        spawnMuzzleFlash(b.x, b.y, a);
         send({
             type: ClientMsg.BULLET,
             bulletId: b.bulletId,
@@ -498,7 +487,7 @@ export function runSimulation(dt, ctx) {
         let hitHull = false;
         for (const hull of world.hulls) {
             if (pointInsideObb(b.x, b.y, hull.x, hull.y, hull.angle, hull.w / 2, hull.h / 2)) {
-                spawnParticles(b.x, b.y, '#888', 3);
+                createBulletHitEffect(b.x, b.y);
                 const hullDist = Math.hypot(tank.x - b.x, tank.y - b.y);
                 playSound_Hit(Math.max(0, 1 - hullDist / 1920), calcPan(b.x, b.y));
                 bullets.splice(i, 1);
@@ -531,10 +520,29 @@ export function runSimulation(dt, ctx) {
     for (let i = particles.length - 1; i >= 0; i--) {
         const p = particles[i];
         const isSmoke = p.type === 'smoke' || p.type === 'fire_smoke' || p.type === 'dark_smoke';
+        const isMuzzle = p.type === 'muzzle' || p.type === 'muzzle_smoke';
+        const isExplSmoke = p.type === 'expl_smoke';
+        const isExplDirt = p.type === 'expl_dirt';
+        const isExplSpark = p.type === 'expl_spark';
+        const isExplFire = p.type === 'expl_fire';
         p.x += (p.vx + (isSmoke ? windVx : 0)) * dt;
         p.y += (p.vy + (isSmoke ? windVy : 0)) * dt;
+        if (isMuzzle) { const d = Math.pow(0.04, dt); p.vx *= d; p.vy *= d; }
+        // Дым взрыва: сильное замедление (как мазл)
+        if (isExplSmoke) { const d = Math.pow(0.04, dt); p.vx *= d; p.vy *= d; }
+        // Искры взрыва: замедление как дым
+        if (isExplSpark) { const d = Math.pow(0.04, dt); p.vx *= d; p.vy *= d; }
+        if (p.type === 'spark_hit') { const d = Math.pow(0.25, dt); p.vx *= d; p.vy *= d; }
+        // Куски земли: слабое замедление
+        if (isExplDirt) { const d = Math.pow(0.25, dt); p.vx *= d; p.vy *= d; }
+        // Фаерболы взрыва: растут
+        if (isExplFire) { p.size += dt * 8; }
+        // Пыль: растёт
+        if (p.type === 'expl_dust') { p.size += dt * 3; }
+        if (p.type === 'exhaust') { p.size += dt * 40; }
         p.life -= dt;
-        if (isSmoke) p.size += dt * 5;
+        if (p.type === 'fire_smoke') p.size *= Math.pow(1.5, dt);
+        else if (isSmoke || isExplSmoke) p.size += dt * 5;
         if (p.life <= 0) particles.splice(i, 1);
     }
     for (let i = smokes.length - 1; i >= 0; i--) {
@@ -600,7 +608,7 @@ function updateEffectsOnly(dt) {
         let hitHull = false;
         for (const hull of world.hulls) {
             if (pointInsideObb(b.x, b.y, hull.x, hull.y, hull.angle, hull.w / 2, hull.h / 2)) {
-                spawnParticles(b.x, b.y, '#888', 3);
+                createBulletHitEffect(b.x, b.y);
                 bullets.splice(i, 1);
                 hitHull = true;
                 break;
@@ -614,10 +622,25 @@ function updateEffectsOnly(dt) {
     for (let i = particles.length - 1; i >= 0; i--) {
         const p = particles[i];
         const isSmoke = p.type === 'smoke' || p.type === 'fire_smoke' || p.type === 'dark_smoke';
+        const isMuzzle = p.type === 'muzzle' || p.type === 'muzzle_smoke';
+        const isExplSmoke = p.type === 'expl_smoke';
+        const isExplDirt = p.type === 'expl_dirt';
+        const isExplSpark = p.type === 'expl_spark';
+        const isExplFire = p.type === 'expl_fire';
+        const isExplDust = p.type === 'expl_dust';
         p.x += (p.vx + (isSmoke ? wVx : 0)) * dt;
         p.y += (p.vy + (isSmoke ? wVy : 0)) * dt;
+        if (isMuzzle) { const d = Math.pow(0.04, dt); p.vx *= d; p.vy *= d; }
+        if (isExplSmoke) { const d = Math.pow(0.04, dt); p.vx *= d; p.vy *= d; }
+        if (isExplSpark) { const d = Math.pow(0.04, dt); p.vx *= d; p.vy *= d; }
+        if (p.type === 'spark_hit') { const d = Math.pow(0.25, dt); p.vx *= d; p.vy *= d; }
+        if (isExplDirt) { const d = Math.pow(0.25, dt); p.vx *= d; p.vy *= d; }
+        if (isExplFire) p.size += dt * 8;
+        if (isExplDust) p.size += dt * 3;
+        if (p.type === 'exhaust') p.size += dt * 40;
         p.life -= dt;
-        if (isSmoke) p.size += dt * 5;
+        if (p.type === 'fire_smoke') p.size *= Math.pow(1.5, dt);
+        else if (isSmoke) p.size += dt * 5;
         if (p.life <= 0) particles.splice(i, 1);
     }
     // Дымы

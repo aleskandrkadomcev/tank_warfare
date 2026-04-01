@@ -25,7 +25,6 @@ import {
     playBombBeep,
     playRocketFlyBy,
     playSound_BrickHit,
-    playSound_Explosion,
     playSound_Heal,
     playSound_Hit,
     playSound_Shot,
@@ -54,6 +53,7 @@ export const gameMessageHooks = {
     spawnMyTank: () => { },
     updateUI: () => { },
     spawnParticles: (_x: number, _y: number, _c: string, _n: number) => { },
+    spawnMuzzleFlash: (_x: number, _y: number, _angle: number) => { },
     createExplosion: (_x: number, _y: number, _r: number) => { },
     createSmokeCloud: (_x: number, _y: number) => { },
     addTrack: (_x: number, _y: number, _a: number, _heavy?: boolean) => { },
@@ -165,7 +165,7 @@ function handleStart(d: Record<string, unknown>) {
     if (d.map) {
         const map = d.map as {
             bricks: { x: number; y: number }[];
-            forests?: { x: number; y: number }[];
+            forests?: { x: number; y: number; type: number; angle: number; scale: number }[];
             stones?: { x: number; y: number; type: number; angle: number; scale: number }[];
             biome: number;
             w: number;
@@ -271,9 +271,7 @@ function handlePlayerDied(d: Record<string, unknown>) {
             et.spawnImmunityTimer = SPAWN_IMMUNITY_TIME;
         }
         if (deathX != null && deathY != null) {
-            gameMessageHooks.spawnParticles(deathX, deathY, '#ffeb3b', 20);
-            const vol = getVolumeByDistance(deathX, deathY);
-            playSound_Explosion(vol, calcPan(deathX, deathY));
+            gameMessageHooks.createTankExplosion(deathX, deathY);
         }
     } else {
         const deathEl = document.getElementById('death-screen');
@@ -281,8 +279,7 @@ function handlePlayerDied(d: Record<string, unknown>) {
         battle.tank.hp = 0;
         battle.tank.isDead = true;
         battle.tank._respawnTimer = 3.0;
-        gameMessageHooks.spawnParticles(battle.tank.x, battle.tank.y, '#f44336', 20);
-        playSound_Explosion(1);
+        gameMessageHooks.createTankExplosion(battle.tank.x, battle.tank.y);
         setTimeout(() => { if (!(session as any).roundOver) gameMessageHooks.spawnMyTank(); }, 3000);
     }
 }
@@ -307,7 +304,7 @@ function handleBulletHitMe(d: Record<string, unknown>) {
     if (battle.tank.spawnImmunityTimer <= 0) {
         battle.tank.hp -= d.damage as number;
     }
-    gameMessageHooks.spawnParticles(battle.tank.x, battle.tank.y, '#f44336', 5);
+    gameMessageHooks.createBulletHitEffect(battle.tank.x, battle.tank.y);
     playSound_Hit();
     triggerShake('hit');
     if (d.bulletId) {
@@ -332,7 +329,7 @@ function handleBulletRemove(d: Record<string, unknown>) {
 }
 
 function handleBulletHitVisual(d: Record<string, unknown>) {
-    gameMessageHooks.spawnParticles(d.hitX as number, d.hitY as number, '#ffeb3b', 3);
+    gameMessageHooks.createBulletHitEffect(d.hitX as number, d.hitY as number);
     const vol = getVolumeByDistance(d.hitX as number, d.hitY as number);
     if (vol > 0.05) playSound_Hit(vol, calcPan(d.hitX as number, d.hitY as number));
 }
@@ -483,7 +480,7 @@ function handleRestartMatch(d: Record<string, unknown>) {
     if (d.map) {
         const map = d.map as {
             bricks: { x: number; y: number }[];
-            forests?: { x: number; y: number }[];
+            forests?: { x: number; y: number; type: number; angle: number; scale: number }[];
             stones?: { x: number; y: number; type: number; angle: number; scale: number }[];
             biome: number;
             w: number;
@@ -657,7 +654,9 @@ function handleBullet(d: Record<string, unknown>) {
             playSound_Shot(vol, pan);
         }
     }
-    gameMessageHooks.spawnParticles(d.x as number, d.y as number, '#ffeb3b', 5);
+    // Мазл-флеш для чужих выстрелов (направление из вектора скорости пули)
+    const bulletAngle = Math.atan2(d.vy as number, d.vx as number);
+    gameMessageHooks.spawnMuzzleFlash(d.x as number, d.y as number, bulletAngle);
 }
 
 function handleRejoin(d: Record<string, unknown>) {
@@ -686,7 +685,7 @@ function handleRejoin(d: Record<string, unknown>) {
     if (d.map) {
         const map = d.map as {
             bricks: { x: number; y: number }[];
-            forests?: { x: number; y: number }[];
+            forests?: { x: number; y: number; type: number; angle: number; scale: number }[];
             stones?: { x: number; y: number; type: number; angle: number; scale: number }[];
             biome: number;
             w: number;

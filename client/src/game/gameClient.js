@@ -18,7 +18,7 @@ import { drawGameFrame } from '../render/drawFrame.js';
 import { resetTrackCanvas } from '../render/effects.js';
 import { findSpawnSpot } from './collision.js';
 import { shadeColor } from './colorUtils.js';
-import { addTrack, createExplosion, createSmokeCloud, spawnParticles } from './effects.js';
+import { addTrack, createBulletHitEffect, createExplosion, createSmokeCloud, createTankExplosion, spawnMuzzleFlash, spawnParticles } from './effects.js';
 import { battle, level, session, world } from './gameState.js';
 import { runSimulation } from './simulation.js';
 import cursorUrl from '../game-assets/images/cursor.png?url';
@@ -697,7 +697,10 @@ Object.assign(gameMessageHooks, {
     spawnMyTank,
     updateUI,
     spawnParticles,
+    spawnMuzzleFlash,
+    createBulletHitEffect,
     createExplosion,
+    createTankExplosion,
     createSmokeCloud,
     addTrack,
 });
