@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "dotenv": "^16.4.7",
+    "pixi.js": "^7.4.3",
     "ws": "^8.18.0"
   },
   "devDependencies": {
