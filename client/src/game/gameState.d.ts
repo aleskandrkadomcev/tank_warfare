@@ -1,5 +1,7 @@
 /** Типы для импорта `gameState.js` из TypeScript-модулей (фаза 4). */
 
+import type { TankDef } from '../../../shared/src/tankDefs.js';
+
 export interface WorldBrick {
     x: number;
     y: number;
@@ -64,20 +66,29 @@ export interface LocalTank {
     color: string;
     turretColor: string;
     trackColor: string;
+    camo: string;
+    tankType: string;
     damageBoostTimer: number;
     speedBoostTimer: number;
     collisionTimer: number;
     smokeCount: number;
     mineCount: number;
     rocketCount: number;
+    healCount: number;
+    healCooldown: number;
+    aimDist: number;
     isDead: boolean;
     spawnImmunityTimer: number;
+    _respawnTimer?: number;
+    maxHp?: number;
 }
 
 export interface EnemyTank extends LocalTank {
     id: string;
     team: number;
     lastSeenAt?: number;
+    maxHp: number;
+    _trackDist?: number;
 }
 
 /** Минимум для движков в `session` (реализация — `TankEngine` в audio). */
@@ -85,6 +96,15 @@ export type TankEngineHandle = {
     start: () => void;
     update: (dt: number, throttle: number, brake: number) => void;
 };
+
+export interface WorldHull {
+    id: string;
+    x: number;
+    y: number;
+    angle: number;
+    w: number;
+    h: number;
+}
 
 export function bumpBricksDrawRevision(): void;
 
@@ -100,6 +120,9 @@ export const world: {
     mines: WorldMine[];
     rockets: WorldRocket[];
     explosions: unknown[];
+    stones: unknown[];
+    explosionMarks: unknown[];
+    hulls: WorldHull[];
 };
 
 export const battle: {
@@ -108,6 +131,9 @@ export const battle: {
     myScore: number;
     enemyScore: number;
     bulletCounter: number;
+    tankDef: TankDef;
+    scoreLimit: number;
+    liveStats: unknown[];
 };
 
 export const session: {
@@ -116,11 +142,15 @@ export const session: {
     myId: string | null;
     myTeam: number;
     myColor: string;
-    playerData: Record<string, { nick: string; team: number; color: string; isBot?: boolean }>;
+    playerData: Record<string, { nick: string; team: number; color: string; camo?: string; isBot?: boolean }>;
     myNickname: string;
     currentLobbyId: string | null;
     myEngine: TankEngineHandle | null;
     enemyEngine: TankEngineHandle | null;
+    myCamo: string;
+    myTankType: string;
+    spawnSlot: number;
+    roundOver?: boolean;
 };
 
 export const level: {
@@ -128,4 +158,6 @@ export const level: {
     mapHeight: number;
     biome: number;
     trackSpawnDist: number;
+    windAngle: number;
+    windSpeed: number;
 };

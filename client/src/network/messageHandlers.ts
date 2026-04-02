@@ -55,8 +55,11 @@ export const gameMessageHooks = {
     spawnParticles: (_x: number, _y: number, _c: string, _n: number) => { },
     spawnMuzzleFlash: (_x: number, _y: number, _angle: number) => { },
     createExplosion: (_x: number, _y: number, _r: number) => { },
+    createTankExplosion: (_x: number, _y: number) => { },
+    createBulletHitEffect: (_x: number, _y: number) => { },
     createSmokeCloud: (_x: number, _y: number) => { },
-    addTrack: (_x: number, _y: number, _a: number, _heavy?: boolean) => { },
+    addTrack: (_x: number, _y: number, _a: number, _typeOrHeavy?: string | boolean) => { },
+    updateInventoryUI: () => { },
 };
 
 export function configureServerMessages(api: { send: (d: SendPayload) => void }) {
@@ -175,8 +178,8 @@ function handleStart(d: Record<string, unknown>) {
         map.bricks.forEach((b) => world.bricks.push(b));
         world.forests.length = 0;
         (map.forests || []).forEach((f) => world.forests.push(f));
-        (world as any).stones.length = 0;
-        (map.stones || []).forEach((s: any) => (world as any).stones.push(s));
+        world.stones.length = 0;
+        (map.stones || []).forEach((s: any) => world.stones.push(s));
         level.biome = map.biome;
         level.mapWidth = map.w;
         level.mapHeight = map.h;
@@ -204,7 +207,7 @@ function handleGameOver(d: Record<string, unknown>) {
     const win = d.winner === session.myTeam;
     const draw = d.winner === 0;
     // Не останавливаем gameStarted — рендер-луп продолжает работать (замороженный кадр)
-    (session as any).roundOver = true;
+    session.roundOver = true;
     const deathEl = document.getElementById('death-screen');
     const victoryEl = document.getElementById('victory-screen');
     if (deathEl) deathEl.style.display = 'none';
@@ -280,7 +283,7 @@ function handlePlayerDied(d: Record<string, unknown>) {
         battle.tank.isDead = true;
         battle.tank._respawnTimer = 3.0;
         gameMessageHooks.createTankExplosion(battle.tank.x, battle.tank.y);
-        setTimeout(() => { if (!(session as any).roundOver) gameMessageHooks.spawnMyTank(); }, 3000);
+        setTimeout(() => { if (!session.roundOver) gameMessageHooks.spawnMyTank(); }, 3000);
     }
 }
 
@@ -470,7 +473,7 @@ function handleBricksDestroyBatch(d: Record<string, unknown>) {
 }
 
 function handleRestartMatch(d: Record<string, unknown>) {
-    (session as any).roundOver = false;
+    session.roundOver = false;
     // Убираем endgame UI
     const overlay = document.getElementById('endgame-overlay');
     if (overlay) overlay.style.display = 'none';
@@ -490,14 +493,14 @@ function handleRestartMatch(d: Record<string, unknown>) {
         map.bricks.forEach((b) => world.bricks.push(b));
         world.forests.length = 0;
         (map.forests || []).forEach((f) => world.forests.push(f));
-        (world as any).stones.length = 0;
-        (map.stones || []).forEach((s: any) => (world as any).stones.push(s));
+        world.stones.length = 0;
+        (map.stones || []).forEach((s: any) => world.stones.push(s));
         level.biome = map.biome;
         if (map.w) level.mapWidth = map.w;
         if (map.h) level.mapHeight = map.h;
         bumpBricksDrawRevision();
     }
-    (world as any).hulls.length = 0;
+    world.hulls.length = 0;
     (battle as any).liveStats = [];
     battle.myScore = 0;
     battle.enemyScore = 0;
@@ -505,7 +508,7 @@ function handleRestartMatch(d: Record<string, unknown>) {
 }
 
 function handleHullUpdate(d: Record<string, unknown>) {
-    const hull = (world as any).hulls.find((h: any) => h.id === d.id);
+    const hull = world.hulls.find((h) => h.id === d.id);
     if (hull) {
         hull.x = d.x as number;
         hull.y = d.y as number;
@@ -532,7 +535,7 @@ function handleBoostSpawn(d: Record<string, unknown>) {
 }
 
 function handleHullSpawn(d: Record<string, unknown>) {
-    (world as any).hulls.push({
+    world.hulls.push({
         id: d.id as string,
         x: d.x as number,
         y: d.y as number,
@@ -695,8 +698,8 @@ function handleRejoin(d: Record<string, unknown>) {
         map.bricks.forEach((b) => world.bricks.push(b));
         world.forests.length = 0;
         (map.forests || []).forEach((f) => world.forests.push(f));
-        (world as any).stones.length = 0;
-        (map.stones || []).forEach((s: any) => (world as any).stones.push(s));
+        world.stones.length = 0;
+        (map.stones || []).forEach((s: any) => world.stones.push(s));
         level.biome = map.biome;
         level.mapWidth = map.w;
         level.mapHeight = map.h;
@@ -721,8 +724,8 @@ function handleRejoin(d: Record<string, unknown>) {
     }
     const hulls = d.hulls as { id: string; x: number; y: number; angle: number; w: number; h: number }[] | undefined;
     if (hulls) {
-        (world as any).hulls.length = 0;
-        hulls.forEach((h) => (world as any).hulls.push(h));
+        world.hulls.length = 0;
+        hulls.forEach((h) => world.hulls.push(h));
     }
     // Запускаем игру через тот же хук
     gameMessageHooks.startGameClient();
