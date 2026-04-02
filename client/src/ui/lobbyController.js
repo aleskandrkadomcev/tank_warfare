@@ -23,7 +23,7 @@ export function mountLobbyUI() {
     document.getElementById('btnStart')?.addEventListener('click', () => startGame());
     document.getElementById('btnAddBot')?.addEventListener('click', () => addBot());
     document.getElementById('btnRemoveBot')?.addEventListener('click', () => removeBot());
-    document.getElementById('btnLeaveLobby')?.addEventListener('click', () => location.reload());
+    document.getElementById('btnLeaveLobby')?.addEventListener('click', () => { sessionStorage.removeItem('lobbyReconnect'); location.reload(); });
     document.getElementById('lobby-chat-send')?.addEventListener('click', () => sendChatMessage());
     document.getElementById('lobby-chat-input')?.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') { e.preventDefault(); sendChatMessage(); }

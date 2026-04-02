@@ -101,6 +101,24 @@ window.addEventListener('load', () => {
     updateLobbyListUI([]);
     setupUISounds();
     connect();
+    // Авто-реджойн хоста в лобби после F5
+    const reconnectRaw = sessionStorage.getItem('lobbyReconnect');
+    if (reconnectRaw) {
+        try {
+            const { lobbyId, nickname } = JSON.parse(reconnectRaw);
+            if (lobbyId && nickname) {
+                sessionStorage.removeItem('lobbyReconnect');
+                session.myNickname = nickname;
+                setTimeout(() => sendGameMessage({
+                    type: ClientMsg.REJOIN_LOBBY,
+                    lobbyId,
+                    nickname,
+                }), 400);
+            }
+        } catch (_e) {
+            sessionStorage.removeItem('lobbyReconnect');
+        }
+    }
 });
 function initColorPicker() {
     const container = document.getElementById('colorSelect');

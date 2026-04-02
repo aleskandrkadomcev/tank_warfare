@@ -46,6 +46,7 @@ export function handleCreateLobby(wss: WebSocketServer, ws: WebSocket, data: Rec
         smokes: [],
         idleTickHandle: null,
         botsOnlyCleanupHandle: null,
+        hostReconnectHandle: null,
         mapSize: typeof data.mapSize === 'string' ? data.mapSize : 'small',
         scoreLimit: parseScoreLimit(data.scoreLimit),
         stats: {},
@@ -69,14 +70,55 @@ export function handleCreateLobby(wss: WebSocketServer, ws: WebSocket, data: Rec
     broadcastLobbyList(wss);
 }
 
-export function handleRejoinLobby(_wss: WebSocketServer, ws: WebSocket, data: Record<string, unknown>): void {
+export function handleRejoinLobby(wss: WebSocketServer, ws: WebSocket, data: Record<string, unknown>): void {
     const lobbyId = typeof data.lobbyId === 'string' ? data.lobbyId : '';
     const lobby = lobbyId ? lobbies[lobbyId] : undefined;
-    if (!lobby || !lobby.gameStarted) {
-        ws.send(JSON.stringify({ type: ServerMsg.ERROR, msg: 'Lobby not found or game not running' }));
+    if (!lobby) {
+        ws.send(JSON.stringify({ type: ServerMsg.ERROR, msg: 'Lobby not found' }));
         return;
     }
     const nickname = sanitizeNick(data.nickname);
+
+    // --- Реджойн хоста в лобби ДО начала игры ---
+    if (!lobby.gameStarted) {
+        const ghost = lobby.players.find(
+            (p) => !p.isBot && p.disconnectedAt && p.nickname === nickname && p.id === lobby.hostId,
+        );
+        if (!ghost) {
+            ws.send(JSON.stringify({ type: ServerMsg.ERROR, msg: 'No slot to rejoin' }));
+            return;
+        }
+        // Восстанавливаем WS хоста
+        ws.id = ghost.id;
+        ws.lobbyId = lobbyId;
+        ws.nickname = ghost.nickname;
+        ws.team = ghost.team;
+        ws.ready = false;
+        ws.color = ghost.color;
+        ws.camo = ghost.camo;
+        ws.tankType = ghost.tankType;
+        const idx = lobby.players.indexOf(ghost);
+        if (idx !== -1) lobby.players[idx] = ws;
+        // Отменяем таймер удаления
+        if (lobby.hostReconnectHandle) {
+            clearTimeout(lobby.hostReconnectHandle);
+            lobby.hostReconnectHandle = null;
+        }
+        // Отправляем как будто лобби только создано
+        ws.send(JSON.stringify({
+            type: ServerMsg.LOBBY_CREATED,
+            lobbyId,
+            playerId: ws.id,
+            team: ws.team,
+            nickname: ws.nickname,
+            color: ws.color,
+            isHost: true,
+            name: lobby.name,
+        }));
+        broadcastLobbyState(lobby);
+        broadcastLobbyList(wss);
+        return;
+    }
     // Ищем «призрака» — отключённого игрока с таким же ником
     const ghost = lobby.players.find(
         (p) => !p.isBot && p.disconnectedAt && p.nickname === nickname,
@@ -169,7 +211,16 @@ export function handleJoinLobby(wss: WebSocketServer, ws: WebSocket, data: Recor
     const lobbyId = typeof data.lobbyId === 'string' ? data.lobbyId : '';
     const lobby = lobbyId ? lobbies[lobbyId] : undefined;
     if (lobby && !lobby.gameStarted && lobby.players.length < MAX_PLAYERS) {
-        ws.nickname = sanitizeNick(data.nickname);
+        const nick = sanitizeNick(data.nickname);
+        // Если есть ghost-хост с таким же ником — реджойним вместо создания дубля
+        const ghost = lobby.players.find(
+            (p) => !p.isBot && p.disconnectedAt && p.nickname === nick && p.id === lobby.hostId,
+        );
+        if (ghost) {
+            handleRejoinLobby(wss, ws, { lobbyId, nickname: nick });
+            return;
+        }
+        ws.nickname = nick;
         ws.id = `p_${Math.floor(Math.random() * 10000)}`;
         ws.lobbyId = lobbyId;
         ws.team = 2;

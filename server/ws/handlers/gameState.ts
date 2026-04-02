@@ -362,8 +362,8 @@ export function handleRestartMatch(wss: WebSocketServer, ws: WebSocket, _data: R
         initBotsForStart(lobby);
         stopAiTick(lobby);
         startAiTick(wss, lobby);
-        broadcastScores(lobby);
-        broadcastGame(lobby, { type: ServerMsg.RESTART_MATCH, map: lobby.mapData });
+        const allPlayers = lobby.players.map((p) => ({ id: p.id, nick: p.nickname || 'Bot', team: p.team }));
+        broadcastGame(lobby, { type: ServerMsg.RESTART_MATCH, map: lobby.mapData, allPlayers });
     }
 }
 

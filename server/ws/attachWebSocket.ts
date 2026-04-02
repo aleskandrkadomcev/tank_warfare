@@ -52,15 +52,30 @@ export function attachWebSocketServer(wss: WebSocketServer): void {
                     if (nextHost) lobby.hostId = nextHost.id!;
                 }
             } else if (ws.id === lobby.hostId) {
-                // Хост вышел из лобби — закрываем лобби, выкидываем всех
-                const closeMsg = JSON.stringify({ type: 'lobby_closed' });
-                for (const p of lobby.players) {
-                    if (p !== ws && !p.isBot && p.readyState === 1) {
-                        p.send(closeMsg);
-                    }
+                // Хост вышел из лобби — даём 10 сек на реконнект
+                ws.disconnectedAt = Date.now();
+                const lobbyId = ws.lobbyId!;
+                // Отменяем отсчёт если был
+                if (lobby.countdownHandle) {
+                    clearInterval(lobby.countdownHandle);
+                    lobby.countdownHandle = null;
+                    lobby.countdown = 0;
                 }
-                onLobbyCleanup(lobby);
-                delete lobbies[ws.lobbyId!];
+                lobby.hostReconnectHandle = setTimeout(() => {
+                    const l = lobbies[lobbyId];
+                    if (!l) return;
+                    // Хост не вернулся — закрываем лобби
+                    const closeMsg = JSON.stringify({ type: 'lobby_closed' });
+                    for (const p of l.players) {
+                        if (p !== ws && !p.isBot && p.readyState === 1) {
+                            p.send(closeMsg);
+                        }
+                    }
+                    onLobbyCleanup(l);
+                    delete lobbies[lobbyId];
+                    broadcastLobbyList(wss);
+                }, 10_000);
+                broadcastLobbyState(lobby);
                 broadcastLobbyList(wss);
                 return;
             } else {

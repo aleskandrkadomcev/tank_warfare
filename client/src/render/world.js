@@ -316,6 +316,12 @@ function rebuildStoneBodyCache(stones, mapWidth, mapHeight) {
     }
 }
 
+/** Сбросить кэш камней (вызывать при смене карты / рестарте раунда). */
+export function resetStoneCaches() {
+    stoneShadowCacheKey = '';
+    stoneBodyCacheKey = '';
+}
+
 /** Отрисовка теней камней (вызывать до танков или вместе с тенями кирпичей). */
 export function drawStoneShadows(ctx, stones, mapWidth, mapHeight) {
     if (!Array.isArray(stones) || stones.length === 0) return;

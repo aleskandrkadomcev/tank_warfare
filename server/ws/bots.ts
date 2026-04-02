@@ -755,6 +755,7 @@ export function onLobbyCleanup(lobby: Lobby): void {
     stopAiTick(lobby);
     if (lobby.idleTickHandle) { clearInterval(lobby.idleTickHandle); lobby.idleTickHandle = null; }
     if (lobby.botsOnlyCleanupHandle) { clearTimeout(lobby.botsOnlyCleanupHandle); lobby.botsOnlyCleanupHandle = null; }
+    if (lobby.hostReconnectHandle) { clearTimeout(lobby.hostReconnectHandle); lobby.hostReconnectHandle = null; }
     lobby.aiBullets = [];
 }
 

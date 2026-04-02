@@ -93,6 +93,8 @@ export type Lobby = {
     detectionVisibleUntil: Record<string, number>;
     /** Таймер автоудаления лобби если остались только боты. */
     botsOnlyCleanupHandle: ReturnType<typeof setTimeout> | null;
+    /** Таймер ожидания реконнекта хоста (до начала игры). */
+    hostReconnectHandle: ReturnType<typeof setTimeout> | null;
     /** Статистика игроков: kills, deaths, damageDealt, damageReceived. */
     stats: Record<string, { kills: number; deaths: number; damageDealt: number; damageReceived: number }>;
     /** Флаг окончания раунда — боты и счёт замораживаются. */

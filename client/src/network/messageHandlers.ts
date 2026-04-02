@@ -14,6 +14,7 @@ import {
     SPAWN_IMMUNITY_TIME,
 } from '../config/constants.js';
 import { battle, bumpBricksDrawRevision, level, session, world } from '../game/gameState.js';
+import { resetStoneCaches } from '../render/world.js';
 
 type WsMineLocal = { mineId: string; x: number; y: number };
 import { getTankDef as getTankDefFn } from '../../../shared/dist/tankDefs.js';
@@ -82,6 +83,10 @@ function handleLobbyCreated(d: Record<string, unknown>) {
     session.myTeam = d.team as number;
     session.isHost = Boolean(d.isHost);
     session.currentLobbyId = d.lobbyId as string;
+    // Сохраняем для авто-реджойна при F5
+    if (session.isHost) {
+        sessionStorage.setItem('lobbyReconnect', JSON.stringify({ lobbyId: d.lobbyId, nickname: session.myNickname }));
+    }
     gameMessageHooks.showLobby(d.lobbyId as string, (d.name as string) || 'Лобби', Boolean(d.isHost));
     session.playerData[session.myId] = {
         nick: session.myNickname,
@@ -145,6 +150,7 @@ function handleLobbyChat(d: Record<string, unknown>) {
 }
 
 function handleStart(d: Record<string, unknown>) {
+    sessionStorage.removeItem('lobbyReconnect');
     initAudio();
     if (!session.myEngine) {
         session.myEngine = new TankEngine(audioCtx, false);
@@ -499,9 +505,13 @@ function handleRestartMatch(d: Record<string, unknown>) {
         if (map.w) level.mapWidth = map.w;
         if (map.h) level.mapHeight = map.h;
         bumpBricksDrawRevision();
+        resetStoneCaches();
     }
     world.hulls.length = 0;
-    (battle as any).liveStats = [];
+    (battle as any).liveStats = ((d.allPlayers as any[]) || []).map((p: any) => ({
+        id: p.id, nick: p.nick, team: p.team,
+        kills: 0, deaths: 0, damageDealt: 0, damageReceived: 0,
+    }));
     battle.myScore = 0;
     battle.enemyScore = 0;
     gameMessageHooks.resetMatch();
@@ -777,7 +787,7 @@ const handlers: Partial<Record<(typeof ServerMsg)[keyof typeof ServerMsg], Serve
     [ServerMsg.BULLET]: handleBullet,
     [ServerMsg.USE_HEAL]: handleUseHeal,
     [ServerMsg.REJOIN]: handleRejoin,
-    [ServerMsg.LOBBY_CLOSED]: () => location.reload(),
+    [ServerMsg.LOBBY_CLOSED]: () => { sessionStorage.removeItem('lobbyReconnect'); location.reload(); },
     [ServerMsg.LOBBY_CHAT]: handleLobbyChat,
 };
 

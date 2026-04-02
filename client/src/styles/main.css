@@ -359,6 +359,10 @@ h2 {
   vertical-align: middle;
 }
 
+#team1-list, #team2-list {
+  min-height: 210px;
+}
+
 #team1-list.drag-over, #team2-list.drag-over {
   outline: 2px dashed #ffeb3b;
   outline-offset: -2px;
