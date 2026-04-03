@@ -24,18 +24,19 @@ export function drawNickname(ctx, t, isMy, session) {
     ctx.fillText(displayName, t.x, t.y - 40);
 }
 
-export function drawAimCrosshair(ctx, tank) {
+export function drawAimCrosshair(ctx, tank, sf) {
     const dist = tank.aimDist || 200;
     const aimX = tank.x + Math.cos(tank.turretAngle) * dist;
     const aimY = tank.y + Math.sin(tank.turretAngle) * dist;
+    const s = 1 / (sf || 1);  // компенсация зума — постоянный размер на экране
     ctx.strokeStyle = 'rgba(255,0,0,0.5)';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2 * s;
     ctx.beginPath();
-    ctx.arc(aimX, aimY, 10, 0, Math.PI * 2);
-    ctx.moveTo(aimX - 15, aimY);
-    ctx.lineTo(aimX + 15, aimY);
-    ctx.moveTo(aimX, aimY - 15);
-    ctx.lineTo(aimX, aimY + 15);
+    ctx.arc(aimX, aimY, 10 * s, 0, Math.PI * 2);
+    ctx.moveTo(aimX - 15 * s, aimY);
+    ctx.lineTo(aimX + 15 * s, aimY);
+    ctx.moveTo(aimX, aimY - 15 * s);
+    ctx.lineTo(aimX, aimY + 15 * s);
     ctx.stroke();
 }
 

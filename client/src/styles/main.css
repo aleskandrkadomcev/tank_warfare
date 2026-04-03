@@ -10,6 +10,25 @@ body {
   user-select: none;
 }
 
+#fullscreen-hint {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.8);
+  color: #ffeb3b;
+  padding: 10px 24px;
+  border-radius: 8px;
+  font-size: 15px;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 1s ease;
+}
+#fullscreen-hint.fade-out {
+  opacity: 0;
+}
+
 /* Под всем UI (меню z-index: 100). Иначе canvas в потоке после меню перекрывает его — виден только чёрный фон body. */
 #gameCanvas {
   display: block;

@@ -151,6 +151,8 @@ function handleLobbyChat(d: Record<string, unknown>) {
 
 function handleStart(d: Record<string, unknown>) {
     sessionStorage.removeItem('lobbyReconnect');
+    // Сохраняем для кнопки "Вернуться в игру" при вылете
+    sessionStorage.setItem('gameReconnect', JSON.stringify({ lobbyId: session.currentLobbyId, nickname: session.myNickname }));
     initAudio();
     if (!session.myEngine) {
         session.myEngine = new TankEngine(audioCtx, false);
@@ -162,14 +164,14 @@ function handleStart(d: Record<string, unknown>) {
     }
     session.myTeam = d.team as number;
     session.myColor = d.color as string;
-    session.myCamo = (d.camo as string) || 'none';
+    session.myCamo = (d.camo as string) || '1';
     session.myTankType = (d.tankType as string) || 'medium';
     battle.tankDef = getTankDefFn(session.myTankType as any);
     session.spawnSlot = (d.spawnSlot as number) ?? 0;
     if (typeof d.scoreLimit === 'number') battle.scoreLimit = d.scoreLimit;
     if (typeof d.windAngle === 'number') level.windAngle = d.windAngle;
     ((d.allPlayers as { id: string; nick: string; team: number; color: string; camo?: string; isBot?: boolean }[]) || []).forEach((p) => {
-        session.playerData[p.id] = { nick: p.nick, team: p.team, color: p.color, camo: p.camo || 'none', isBot: Boolean(p.isBot) };
+        session.playerData[p.id] = { nick: p.nick, team: p.team, color: p.color, camo: p.camo || '1', isBot: Boolean(p.isBot) };
     });
     if (d.map) {
         const map = d.map as {
@@ -262,6 +264,7 @@ function handleGameOver(d: Record<string, unknown>) {
     const btnExit = document.getElementById('btnExitMenu') as HTMLButtonElement | null;
     if (btnExit) {
         btnExit.onclick = () => {
+            sessionStorage.removeItem('gameReconnect');
             location.reload();
         };
     }
@@ -686,14 +689,14 @@ function handleRejoin(d: Record<string, unknown>) {
     session.myId = d.playerId as string;
     session.myTeam = d.team as number;
     session.myColor = d.color as string;
-    session.myCamo = (d.camo as string) || 'none';
+    session.myCamo = (d.camo as string) || '1';
     session.myTankType = (d.tankType as string) || 'medium';
     battle.tankDef = getTankDefFn(session.myTankType as any);
     session.spawnSlot = (d.spawnSlot as number) ?? 0;
     if (typeof d.scoreLimit === 'number') battle.scoreLimit = d.scoreLimit;
     if (typeof d.windAngle === 'number') level.windAngle = d.windAngle;
     ((d.allPlayers as { id: string; nick: string; team: number; color: string; camo?: string; isBot?: boolean }[]) || []).forEach((p) => {
-        session.playerData[p.id] = { nick: p.nick, team: p.team, color: p.color, camo: p.camo || 'none', isBot: Boolean(p.isBot) };
+        session.playerData[p.id] = { nick: p.nick, team: p.team, color: p.color, camo: p.camo || '1', isBot: Boolean(p.isBot) };
     });
     if (d.map) {
         const map = d.map as {
@@ -787,7 +790,7 @@ const handlers: Partial<Record<(typeof ServerMsg)[keyof typeof ServerMsg], Serve
     [ServerMsg.BULLET]: handleBullet,
     [ServerMsg.USE_HEAL]: handleUseHeal,
     [ServerMsg.REJOIN]: handleRejoin,
-    [ServerMsg.LOBBY_CLOSED]: () => { sessionStorage.removeItem('lobbyReconnect'); location.reload(); },
+    [ServerMsg.LOBBY_CLOSED]: () => { sessionStorage.removeItem('lobbyReconnect'); sessionStorage.removeItem('gameReconnect'); location.reload(); },
     [ServerMsg.LOBBY_CHAT]: handleLobbyChat,
 };
 

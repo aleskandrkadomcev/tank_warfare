@@ -1,7 +1,7 @@
 /**
  * Полный кадр мира: камера, слои world → tanks → effects → UI.
  */
-import { battle } from '../game/gameState.js';
+import { battle, zoomLevel } from '../game/gameState.js';
 import { clampCamera } from '../game/collision.js';
 import { getShakeOffset } from '../game/cameraShake.js';
 import { DETECTION_MEMORY_MS } from '../config/constants.js';
@@ -74,11 +74,12 @@ export function drawGameFrame(ctx, view) {
         onRocketSmoke,
     } = view;
 
+    const sf = scaleFactor;  // zoomLevel уже включён в scaleFactor из gameClient
     const dx = (keys['MouseX'] || width / 2) - width / 2;
     const dy = (keys['MouseY'] || height / 2) - height / 2;
-    const rawCamX = tank.x + (dx / scaleFactor) * 0.5;
-    const rawCamY = tank.y + (dy / scaleFactor) * 0.5;
-    const c = clampCamera(rawCamX, rawCamY, width, height, scaleFactor, level.mapWidth, level.mapHeight);
+    const rawCamX = tank.x + (dx / sf) * 0.5;
+    const rawCamY = tank.y + (dy / sf) * 0.5;
+    const c = clampCamera(rawCamX, rawCamY, width, height, sf, level.mapWidth, level.mapHeight);
     const shake = getShakeOffset(view.dt || 0.016);
     const camX = c.x + shake.x;
     const camY = c.y + shake.y;
@@ -87,7 +88,7 @@ export function drawGameFrame(ctx, view) {
     ctx.fillRect(0, 0, width, height);
     ctx.save();
     ctx.translate(width / 2, height / 2);
-    ctx.scale(scaleFactor, scaleFactor);
+    ctx.scale(sf, sf);
     ctx.translate(-camX, -camY);
 
     const now = typeof view.frameTimeMs === 'number' ? view.frameTimeMs : performance.now();
@@ -116,8 +117,8 @@ export function drawGameFrame(ctx, view) {
     ctx.lineWidth = 2;
     ctx.stroke();
     ctx.restore();
-    const halfW = width / 2 / scaleFactor;
-    const halfH = height / 2 / scaleFactor;
+    const halfW = width / 2 / sf;
+    const halfH = height / 2 / sf;
     drawTracks(ctx, tracks, now, { camX, camY, halfW, halfH }, level.mapWidth, level.mapHeight);
     drawExhaust(ctx, particles);
     drawParticlesDirt(ctx, particles);
@@ -147,7 +148,7 @@ export function drawGameFrame(ctx, view) {
             const pd = session.playerData[id];
             const baseColor = pd?.color || '#f44336';
             et.color = baseColor;
-            et.camo = pd?.camo || 'none';
+            et.camo = pd?.camo || '1';
             if (et._renderShadeSource !== baseColor) {
                 et._renderShadeSource = baseColor;
                 et.turretColor = shadeColor(baseColor, -20);
@@ -224,7 +225,7 @@ export function drawGameFrame(ctx, view) {
     drawCloudShadows(ctx, now, { camX, camY, halfW, halfH });
 
     if (tank.hp > 0) {
-        drawAimCrosshair(ctx, tank);
+        drawAimCrosshair(ctx, tank, sf);
     }
 
     ctx.restore();

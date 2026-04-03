@@ -21,11 +21,12 @@ void main() {
     if (color.a < 0.01) discard;
 
     vec3 normal = texture2D(uNormalMap, vTextureCoord).rgb * 2.0 - 1.0;
-    normal.y = -normal.y;  // компенсация UNPACK_FLIP_Y_WEBGL
+    normal.y = -normal.y;
     normal = normalize(normal);
 
     float NdotL = max(dot(normal, uLightDir), 0.0);
-    vec3 lit = color.rgb * (uAmbient + uLightIntensity * NdotL);
+    vec3 sunColor = vec3(1.0, 0.95, 0.85);  // тёплый оттенок солнца
+    vec3 lit = color.rgb * (uAmbient + uLightIntensity * NdotL * sunColor);
 
     gl_FragColor = vec4(min(lit, vec3(1.0)), color.a);
 }
@@ -58,8 +59,8 @@ WORLD_LIGHT.x /= len;
 WORLD_LIGHT.y /= len;
 WORLD_LIGHT.z /= len;
 
-const AMBIENT = 0.55;
-const LIGHT_INTENSITY = 1.0;
+const AMBIENT = 0.48;
+const LIGHT_INTENSITY = 1.25;
 
 /**
  * Поворачиваем мировой свет в локальное пространство спрайта.

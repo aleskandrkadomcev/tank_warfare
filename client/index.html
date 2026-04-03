@@ -9,9 +9,11 @@
 </head>
 
 <body>
+  <div id="fullscreen-hint">F11 — Развернуть на весь экран</div>
   <div id="menu">
     <h2>TANKS: WARFARE</h2>
-    <input type="text" id="nicknameInput" placeholder="Твой никнейм" maxlength="12" />
+    <button id="btnRejoinGame" type="button" style="display:none; width:100%; padding:12px; margin-bottom:12px; background:#ff9800; color:#000; font-size:16px; font-weight:bold; border:none; border-radius:8px; cursor:pointer">Вернуться в игру</button>
+    <input type="text" id="nicknameInput" placeholder="Твой никнейм" maxlength="24" />
     <br />
     <input type="text" id="lobbyNameInput" placeholder="Название лобби (макс. 30)" maxlength="30"
       style="width: 250px" />
@@ -30,16 +32,12 @@
     <div style="color: #ffeb3b; font-size: 18px; margin: 5px 0">Код: <span id="roomCodeDisplay"></span></div>
     <div style="margin: 15px 0">
       <div style="font-size: 14px; color: #aaa; margin-bottom: 5px">Твой никнейм:</div>
-      <input type="text" id="lobbyNickInput" maxlength="12" style="width: 150px" />
+      <input type="text" id="lobbyNickInput" maxlength="24" style="width: 150px" />
     </div>
     <div class="tank-customizer">
       <div class="customizer-col">
-        <div style="font-size: 14px; color: #aaa; margin-bottom: 5px">Цвет:</div>
-        <div id="colorSelect" class="color-picker"></div>
-      </div>
-      <div class="customizer-col">
-        <div style="font-size: 14px; color: #aaa; margin-bottom: 5px">Камуфляж:</div>
-        <div id="camoSelect" class="custom-dropdown"></div>
+        <div style="font-size: 14px; color: #aaa; margin-bottom: 5px">Покраска:</div>
+        <div id="skinSelect" class="custom-dropdown"></div>
       </div>
       <div class="customizer-col">
         <div style="font-size: 14px; color: #aaa; margin-bottom: 5px">Тип:</div>

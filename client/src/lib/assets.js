@@ -10,10 +10,35 @@ import tankTurretUrl from '../game-assets/images/MTank_turret_color.png?url';
 import tankBaseNMUrl from '../game-assets/images/MTank_base_NM.png?url';
 import tankTurretNMUrl from '../game-assets/images/MTank_turret_NM.png?url';
 import tankTurretShadowUrl from '../game-assets/images/MTank_turret_shadow.png?url';
-import tankLightBaseUrl from '../game-assets/images/tank_light1_base_green.png?url';
-import tankLightTurretUrl from '../game-assets/images/tank_light1_turret_green.png?url';
-import tankHeavyBaseUrl from '../game-assets/images/tank_heavy1_base_green.png?url';
-import tankHeavyTurretUrl from '../game-assets/images/tank_heavy1_turret_green.png?url';
+import tankLightBaseNMUrl from '../game-assets/images/Tanks/T62/t62_base_NM.png?url';
+import tankLightTurretNMUrl from '../game-assets/images/Tanks/T62/t62_turret_NM.png?url';
+import tankLightTurretShadowUrl from '../game-assets/images/Tanks/T62/t62_turret_shadow.png?url';
+// T62 скины (1-10)
+import t62Base1 from '../game-assets/images/Tanks/T62/t62_base1.png?url';
+import t62Base2 from '../game-assets/images/Tanks/T62/t62_base2.png?url';
+import t62Base3 from '../game-assets/images/Tanks/T62/t62_base3.png?url';
+import t62Base4 from '../game-assets/images/Tanks/T62/t62_base4.png?url';
+import t62Base5 from '../game-assets/images/Tanks/T62/t62_base5.png?url';
+import t62Base6 from '../game-assets/images/Tanks/T62/t62_base6.png?url';
+import t62Base7 from '../game-assets/images/Tanks/T62/t62_base7.png?url';
+import t62Base8 from '../game-assets/images/Tanks/T62/t62_base8.png?url';
+import t62Base9 from '../game-assets/images/Tanks/T62/t62_base9.png?url';
+import t62Base10 from '../game-assets/images/Tanks/T62/t62_base10.png?url';
+import t62Tur1 from '../game-assets/images/Tanks/T62/t62_turret1.png?url';
+import t62Tur2 from '../game-assets/images/Tanks/T62/t62_turret2.png?url';
+import t62Tur3 from '../game-assets/images/Tanks/T62/t62_turret3.png?url';
+import t62Tur4 from '../game-assets/images/Tanks/T62/t62_turret4.png?url';
+import t62Tur5 from '../game-assets/images/Tanks/T62/t62_turret5.png?url';
+import t62Tur6 from '../game-assets/images/Tanks/T62/t62_turret6.png?url';
+import t62Tur7 from '../game-assets/images/Tanks/T62/t62_turret7.png?url';
+import t62Tur8 from '../game-assets/images/Tanks/T62/t62_turret8.png?url';
+import t62Tur9 from '../game-assets/images/Tanks/T62/t62_turret9.png?url';
+import t62Tur10 from '../game-assets/images/Tanks/T62/t62_turret10.png?url';
+import tankHeavyBaseUrl from '../game-assets/images/is3_base1.png?url';
+import tankHeavyTurretUrl from '../game-assets/images/is3_turret1.png?url';
+import tankHeavyBaseNMUrl from '../game-assets/images/is3_base_NM.png?url';
+import tankHeavyTurretNMUrl from '../game-assets/images/is3_turret1_NM.png?url';
+import tankHeavyTurretShadowUrl from '../game-assets/images/is3_turret_shadow.png?url';
 import shadowBrickUrl from '../game-assets/images/shadow_brick.png?url';
 import brickUrl from '../game-assets/images/brick.png?url';
 // shadow_forest.png убран — теперь используем bush2_shadow / bush3_shadow
@@ -58,8 +83,9 @@ import shootUrl from '../game-assets/sounds/shoot.mp3?url';
 import shootHeavyUrl from '../game-assets/sounds/tank_shot2.mp3?url';
 import click1Url from '../game-assets/sounds/click1.mp3?url';
 import click2Url from '../game-assets/sounds/click2.mp3?url';
+import pickBonus1Url from '../game-assets/sounds/pick_bonus1.mp3?url';
 
-const totalAssets = 59;
+const totalAssets = 77; // 59 - 2 (old light) + 20 (T62 skins)
 let assetsLoadedCount = 0;
 
 function checkAssetsLoaded(assets) {
@@ -85,10 +111,14 @@ function createAssets() {
       tankBaseNM: new Image(),
       tankTurretNM: new Image(),
       tankTurretShadow: new Image(),
-      tankLightBase: new Image(),
-      tankLightTurret: new Image(),
+      tankLightBaseNM: new Image(),
+      tankLightTurretNM: new Image(),
+      tankLightTurretShadow: new Image(),
       tankHeavyBase: new Image(),
       tankHeavyTurret: new Image(),
+      tankHeavyBaseNM: new Image(),
+      tankHeavyTurretNM: new Image(),
+      tankHeavyTurretShadow: new Image(),
       shadowBrick: new Image(),
       // shadowForest убран — теперь bush2Shadow / bush3Shadow
       brick: new Image(),
@@ -124,6 +154,12 @@ function createAssets() {
       stone5NM: new Image(),
       vignette: new Image(),
     },
+    /** Скины танков: tankSkins[tankType][skinId] = { base: Image, turret: Image } */
+    tankSkins: {
+      light: {},
+      medium: {},
+      heavy: {},
+    },
     sounds: {
       shoot: new Audio(),
       shootHeavy: new Audio(),
@@ -135,6 +171,7 @@ function createAssets() {
       repair: new Audio(),
       click1: new Audio(),
       click2: new Audio(),
+      pickBonus1: new Audio(),
     },
     loaded: false,
   };
@@ -152,10 +189,26 @@ function createAssets() {
   assets.images.tankBaseNM.src = tankBaseNMUrl;
   assets.images.tankTurretNM.src = tankTurretNMUrl;
   assets.images.tankTurretShadow.src = tankTurretShadowUrl;
-  assets.images.tankLightBase.src = tankLightBaseUrl;
-  assets.images.tankLightTurret.src = tankLightTurretUrl;
+  assets.images.tankLightBaseNM.src = tankLightBaseNMUrl;
+  assets.images.tankLightTurretNM.src = tankLightTurretNMUrl;
+  assets.images.tankLightTurretShadow.src = tankLightTurretShadowUrl;
+
+  // T62 скины (light)
+  const t62Bases = [t62Base1, t62Base2, t62Base3, t62Base4, t62Base5, t62Base6, t62Base7, t62Base8, t62Base9, t62Base10];
+  const t62Turs = [t62Tur1, t62Tur2, t62Tur3, t62Tur4, t62Tur5, t62Tur6, t62Tur7, t62Tur8, t62Tur9, t62Tur10];
+  for (let i = 0; i < 10; i++) {
+    const b = new Image(); b.src = t62Bases[i]; b.onload = () => checkAssetsLoaded(assets);
+    const t = new Image(); t.src = t62Turs[i]; t.onload = () => checkAssetsLoaded(assets);
+    assets.tankSkins.light[String(i + 1)] = { base: b, turret: t };
+  }
+  // Medium/Heavy — пока 1 скин (уже загруженные images)
+  assets.tankSkins.medium['1'] = { base: assets.images.tankBase, turret: assets.images.tankTurret };
+  assets.tankSkins.heavy['1'] = { base: assets.images.tankHeavyBase, turret: assets.images.tankHeavyTurret };
   assets.images.tankHeavyBase.src = tankHeavyBaseUrl;
   assets.images.tankHeavyTurret.src = tankHeavyTurretUrl;
+  assets.images.tankHeavyBaseNM.src = tankHeavyBaseNMUrl;
+  assets.images.tankHeavyTurretNM.src = tankHeavyTurretNMUrl;
+  assets.images.tankHeavyTurretShadow.src = tankHeavyTurretShadowUrl;
   assets.images.shadowBrick.src = shadowBrickUrl;
   // shadowForest убран
   assets.images.brick.src = brickUrl;
@@ -200,6 +253,7 @@ function createAssets() {
   assets.sounds.repair.src = repairUrl;
   assets.sounds.click1.src = click1Url;
   assets.sounds.click2.src = click2Url;
+  assets.sounds.pickBonus1.src = pickBonus1Url;
 
   Object.values(assets.images).forEach((img) => {
     img.onload = () => checkAssetsLoaded(assets);

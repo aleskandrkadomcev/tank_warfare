@@ -4,7 +4,7 @@ import { isValidColor, sanitizeLobbyName, sanitizeNick } from './validation.js';
 describe('sanitizeNick', () => {
     it('обрезает длину и убирает недопустимые символы', () => {
         expect(sanitizeNick('abc!@#def')).toBe('abcdef');
-        expect(sanitizeNick('ОченьДлинныйНикнеймДляТеста')).toBe('ОченьДлинный');
+        expect(sanitizeNick('ОченьДлинныйНикнеймДляТеста')).toBe('ОченьДлинныйНикнеймДляТест');
     });
 
     it('для не-строки возвращает дефолт', () => {

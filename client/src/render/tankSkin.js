@@ -82,7 +82,7 @@ function scaleSprite(spriteImg, scale, rotate180 = false) {
 }
 
 /** Типы танков с реалистичными спрайтами */
-const REALISTIC_TYPES = new Set(['medium']);
+const REALISTIC_TYPES = new Set(['medium', 'heavy', 'light']);
 
 /** Масштаб реалистичных спрайтов */
 const REALISTIC_SCALE = 1 / 2.5;
@@ -97,8 +97,8 @@ function quantizeAngle(rad) {
  * Получает освещённый спрайт для конкретного мирового угла.
  * Спрайт в локальной ориентации, свет повёрнут на -angle.
  */
-function getLitPart(partKey, colorImg, normalImg, angleDeg) {
-    const cacheKey = `${partKey}|${angleDeg}`;
+function getLitPart(partKey, colorImg, normalImg, angleDeg, tankType) {
+    const cacheKey = `${tankType || 'medium'}|${partKey}|${angleDeg}`;
     if (litCache.has(cacheKey)) return litCache.get(cacheKey);
 
     const worldAngle = angleDeg * Math.PI / 180;
@@ -116,35 +116,38 @@ function getLitPart(partKey, colorImg, normalImg, angleDeg) {
  * Все спрайты рисуются обычным ctx.rotate().
  */
 export function getTankSkin(color, camoId, tankType, bodyAngle, turretAngle) {
-    const baseImg = tankType === 'heavy' ? assets.images.tankHeavyBase
-        : tankType === 'light' ? assets.images.tankLightBase
-        : assets.images.tankBase;
-    const turImg = tankType === 'heavy' ? assets.images.tankHeavyTurret
-        : tankType === 'light' ? assets.images.tankLightTurret
-        : assets.images.tankTurret;
+    const tt = tankType || 'medium';
+    const skinId = camoId || '1';
+    // Берём текстуры из реестра скинов
+    const skinEntry = assets.tankSkins[tt]?.[skinId] || assets.tankSkins[tt]?.['1'];
+    const baseImg = skinEntry?.base;
+    const turImg = skinEntry?.turret;
     if (!baseImg?.complete || !baseImg.naturalWidth || !turImg?.complete || !turImg.naturalWidth) {
         return null;
     }
 
-    if (REALISTIC_TYPES.has(tankType || 'medium')) {
-        const baseNM = assets.images.tankBaseNM;
-        const turNM = assets.images.tankTurretNM;
+    if (REALISTIC_TYPES.has(tt)) {
+        const baseNM = tt === 'heavy' ? assets.images.tankHeavyBaseNM
+            : tt === 'light' ? assets.images.tankLightBaseNM
+            : assets.images.tankBaseNM;
+        const turNM = tt === 'heavy' ? assets.images.tankHeavyTurretNM
+            : tt === 'light' ? assets.images.tankLightTurretNM
+            : assets.images.tankTurretNM;
         const hasNM = baseNM?.complete && baseNM.naturalWidth && turNM?.complete && turNM.naturalWidth;
 
         if (hasNM) {
             const bodyDeg = quantizeAngle(bodyAngle || 0);
             const turDeg = quantizeAngle(turretAngle || 0);
 
-            const litBase = getLitPart('base', baseImg, baseNM, bodyDeg);
-            const litTurret = getLitPart('turret', turImg, turNM, turDeg);
+            const litBase = getLitPart('base', baseImg, baseNM, bodyDeg, tt + '|' + skinId);
+            const litTurret = getLitPart('turret', turImg, turNM, turDeg, tt + '|' + skinId);
 
             return {
                 base: litBase || scaleSprite(baseImg, REALISTIC_SCALE),
                 turret: litTurret || scaleSprite(turImg, REALISTIC_SCALE),
             };
         }
-        // Fallback без normal map
-        const fallbackKey = `${tankType}|fallback`;
+        const fallbackKey = `${tt}|${skinId}|fallback`;
         if (!skinCache.has(fallbackKey)) {
             skinCache.set(fallbackKey, {
                 base: scaleSprite(baseImg, REALISTIC_SCALE),

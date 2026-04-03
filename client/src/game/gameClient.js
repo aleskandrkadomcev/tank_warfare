@@ -16,10 +16,10 @@ import {
 import { connectGameSocket, isGameSocketOpen, sendGameMessage } from '../network/socket.js';
 import { drawGameFrame } from '../render/drawFrame.js';
 import { resetTrackCanvas } from '../render/effects.js';
-import { findSpawnSpot } from './collision.js';
+import { clampCamera, findSpawnSpot } from './collision.js';
 import { shadeColor } from './colorUtils.js';
 import { addTrack, createBulletHitEffect, createExplosion, createSmokeCloud, createTankExplosion, spawnMuzzleFlash, spawnParticles } from './effects.js';
-import { battle, level, session, world } from './gameState.js';
+import { battle, level, session, world, zoomLevel } from './gameState.js';
 import { runSimulation } from './simulation.js';
 import cursorUrl from '../game-assets/images/cursor.png?url';
 import { assets } from '../lib/assets.js';
@@ -63,14 +63,14 @@ function getNickname() {
     const inputNick = document.getElementById('nicknameInput').value.trim();
     if (inputNick) {
         sessionStorage.setItem('tank_nickname_session', inputNick);
-        return sanitize(inputNick, 12);
+        return sanitize(inputNick, 24);
     }
     let nick = sessionStorage.getItem('tank_nickname_session');
     if (!nick) {
         nick = 'Игрок' + Math.floor(Math.random() * 1000);
         sessionStorage.setItem('tank_nickname_session', nick);
     }
-    return sanitize(nick, 12);
+    return sanitize(nick, 24);
 }
 function sanitize(str, maxLen) {
     return str.substring(0, maxLen).replace(/[^a-zA-Z0-9_а-яА-ЯёЁ]/g, '') || 'Игрок';
@@ -97,10 +97,36 @@ function setupUISounds() {
 window.addEventListener('load', () => {
     const nickInput = document.getElementById('nicknameInput');
     if (nickInput) nickInput.value = sessionStorage.getItem('tank_nickname_session') || '';
-    initColorPicker();
+    initSkinSelector();
     updateLobbyListUI([]);
     setupUISounds();
     connect();
+    // Подсказка F11 — 3 сек видна, потом 1 сек fadeout
+    const hint = document.getElementById('fullscreen-hint');
+    if (hint) {
+        setTimeout(() => hint.classList.add('fade-out'), 3000);
+        setTimeout(() => hint.remove(), 4000);
+    }
+    // Кнопка "Вернуться в игру" если вылетел из активной игры
+    const gameReconnectRaw = sessionStorage.getItem('gameReconnect');
+    if (gameReconnectRaw) {
+        try {
+            const { lobbyId, nickname } = JSON.parse(gameReconnectRaw);
+            if (lobbyId && nickname) {
+                const btn = document.getElementById('btnRejoinGame');
+                if (btn) {
+                    btn.style.display = 'block';
+                    btn.onclick = () => {
+                        sessionStorage.removeItem('gameReconnect');
+                        session.myNickname = nickname;
+                        rejoinLobby(lobbyId);
+                    };
+                }
+            }
+        } catch (_e) {
+            sessionStorage.removeItem('gameReconnect');
+        }
+    }
     // Авто-реджойн хоста в лобби после F5
     const reconnectRaw = sessionStorage.getItem('lobbyReconnect');
     if (reconnectRaw) {
@@ -120,52 +146,36 @@ window.addEventListener('load', () => {
         }
     }
 });
-function initColorPicker() {
-    const container = document.getElementById('colorSelect');
-    container.innerHTML = '';
-    const selected = document.createElement('div');
-    selected.className = 'color-selected';
-    selected.style.background = session.myColor;
-    container.appendChild(selected);
-    const dropdown = document.createElement('div');
-    dropdown.className = 'color-dropdown';
-    TANK_COLORS.forEach((color) => {
-        const swatch = document.createElement('div');
-        swatch.className = 'color-swatch';
-        swatch.style.background = color;
-        if (color === session.myColor) swatch.classList.add('active');
-        swatch.onclick = (e) => {
-            e.stopPropagation();
-            session.myColor = color;
-            selected.style.background = color;
-            dropdown.querySelectorAll('.color-swatch').forEach((s) => s.classList.remove('active'));
-            swatch.classList.add('active');
-            dropdown.style.display = 'none';
+const SKIN_NAMES = {
+    light: [
+        { id: '1', label: 'Стандартный' }, { id: '2', label: 'Песок' }, { id: '3', label: 'Полиция' },
+        { id: '4', label: 'Зима' }, { id: '5', label: 'Городской' }, { id: '6', label: 'Тигр' },
+        { id: '7', label: 'Серый' }, { id: '8', label: 'Молния' }, { id: '9', label: 'Пустыня' },
+        { id: '10', label: 'Лес' },
+    ],
+    medium: [{ id: '1', label: 'Стандартный' }],
+    heavy: [{ id: '1', label: 'Стандартный' }],
+};
+
+function initSkinSelector() {
+    const tt = session.myTankType || 'medium';
+    const skins = SKIN_NAMES[tt] || SKIN_NAMES.medium;
+    buildCustomDropdown('skinSelect', skins.map((s) => ({ value: s.id, label: s.label })),
+        session.myCamo || '1', (val) => {
+            session.myCamo = val;
             if (isGameSocketOpen() && session.currentLobbyId) {
-                sendGameMessage({ type: ClientMsg.UPDATE_PLAYER, color, camo: session.myCamo });
+                sendGameMessage({ type: ClientMsg.UPDATE_PLAYER, camo: session.myCamo, tankType: session.myTankType });
             }
             drawTankPreview();
-        };
-        dropdown.appendChild(swatch);
-    });
-    container.appendChild(dropdown);
-    selected.onclick = (e) => {
-        e.stopPropagation();
-        dropdown.style.display = dropdown.style.display === 'grid' ? 'none' : 'grid';
-    };
-    document.addEventListener('click', () => { dropdown.style.display = 'none'; });
-
-    // Кастомный dropdown для камуфляжа
-    buildCustomDropdown('camoSelect', [
-        { value: 'none', label: 'Без камуфляжа' },
-        { value: 'camouflage1', label: 'Камуфляж 1' },
-    ], session.myCamo || 'none', (val) => {
-        session.myCamo = val;
-        if (isGameSocketOpen() && session.currentLobbyId) {
-            sendGameMessage({ type: ClientMsg.UPDATE_PLAYER, color: session.myColor, camo: session.myCamo, tankType: session.myTankType });
-        }
-        drawTankPreview();
-    });
+        }, (val) => {
+            // При наведении — превью скина
+            _skinPreviewOverride = val;
+            drawTankPreview();
+        }, () => {
+            // При уходе — сброс превью
+            _skinPreviewOverride = null;
+            drawTankPreview();
+        });
 
     // Кастомный dropdown для типа танка
     buildCustomDropdown('tankTypeSelect', [
@@ -175,16 +185,19 @@ function initColorPicker() {
     ], session.myTankType || 'medium', (val) => {
         session.myTankType = val;
         battle.tankDef = getTankDef(session.myTankType);
+        // Сброс скина на стандартный при смене типа
+        session.myCamo = '1';
         if (isGameSocketOpen() && session.currentLobbyId) {
-            sendGameMessage({ type: ClientMsg.UPDATE_PLAYER, color: session.myColor, camo: session.myCamo, tankType: session.myTankType });
+            sendGameMessage({ type: ClientMsg.UPDATE_PLAYER, camo: session.myCamo, tankType: session.myTankType });
         }
-        drawTankPreview();
+        initSkinSelector(); // Пересоздать список скинов для нового типа
     });
 
     drawTankPreview();
 }
+let _skinPreviewOverride = null;
 
-function buildCustomDropdown(containerId, options, currentValue, onChange) {
+function buildCustomDropdown(containerId, options, currentValue, onChange, onHover, onLeave) {
     const container = document.getElementById(containerId);
     if (!container) return;
     container.innerHTML = '';
@@ -196,12 +209,16 @@ function buildCustomDropdown(containerId, options, currentValue, onChange) {
 
     const list = document.createElement('div');
     list.className = 'dd-list';
+    if (onLeave) list.addEventListener('mouseleave', onLeave);
     options.forEach((opt) => {
         const item = document.createElement('div');
         item.className = 'dd-item';
         if (opt.value === currentValue) item.classList.add('active');
         item.textContent = opt.label;
-        item.addEventListener('mouseenter', () => playUISound(assets.sounds.click1, 0.4), { passive: true });
+        item.addEventListener('mouseenter', () => {
+            playUISound(assets.sounds.click1, 0.4);
+            if (onHover) onHover(opt.value);
+        }, { passive: true });
         item.onclick = (e) => {
             e.stopPropagation();
             playUISound(assets.sounds.click2, 0.6);
@@ -230,12 +247,13 @@ function drawTankPreview() {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    const skin = getTankSkin(session.myColor, session.myCamo || 'none', session.myTankType || 'medium');
+    const previewSkin = _skinPreviewOverride || session.myCamo || '1';
+    const skin = getTankSkin(session.myColor, previewSkin, session.myTankType || 'medium');
     const cx = canvas.width / 2;
     const cy = canvas.height / 2;
     const ttype = session.myTankType || 'medium';
     // Смещение башни вдоль корпуса (танк смотрит вправо → angle=0 → cos=1)
-    const turretOff = ttype === 'light' ? -2 : ttype === 'heavy' ? -4 : 4;
+    const turretOff = ttype === 'light' ? 1 : ttype === 'heavy' ? 17 : 4;
 
     if (skin) {
         // Корпус
@@ -347,7 +365,7 @@ function showLobby(id, name, isHost) {
     document.getElementById('scoreLimitSelector').style.display = isHost ? 'block' : 'none';
     document.getElementById('lobbyNickInput').value = session.myNickname;
     document.getElementById('lobbyNickInput').oninput = (e) => {
-        session.myNickname = sanitize(e.target.value, 12);
+        session.myNickname = sanitize(e.target.value, 24);
         if (isGameSocketOpen()) {
             sendGameMessage({ type: ClientMsg.UPDATE_PLAYER, nickname: session.myNickname });
         }
@@ -361,25 +379,22 @@ function showLobby(id, name, isHost) {
             }
         };
     }
-    initColorPicker();
+    initSkinSelector();
 }
 function escapeLobbyIdAttr(id) {
     return String(id).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }
 function updateLobbyListUI(lobbies) {
     const list = document.getElementById('lobbyList');
-    if (lobbies.length === 0) {
+    // Не показываем лобби которые уже в игре
+    const available = lobbies.filter((l) => !l.inGame);
+    if (available.length === 0) {
         list.innerHTML = '<div style="color:#666;font-style:italic">Нет активных лобби</div>';
         return;
     }
-    list.innerHTML = lobbies
+    list.innerHTML = available
         .map(
-            (l) => {
-                if (l.inGame) {
-                    return `<div class="lobby-item"><span class="lobby-name">${l.name} <small style="color:#ff9800">[В ИГРЕ]</small></span><span class="lobby-players">${l.players}/${l.max}</span><button type="button" class="join-btn" data-lobby-id="${escapeLobbyIdAttr(l.id)}" data-rejoin="1" style="background:#ff9800">⟳</button></div>`;
-                }
-                return `<div class="lobby-item"><span class="lobby-name">${l.name}</span><span class="lobby-players">${l.players}/${l.max}</span><button type="button" class="join-btn" data-lobby-id="${escapeLobbyIdAttr(l.id)}">▶</button></div>`;
-            },
+            (l) => `<div class="lobby-item"><span class="lobby-name">${l.name}</span><span class="lobby-players">${l.players}/${l.max}</span><button type="button" class="join-btn" data-lobby-id="${escapeLobbyIdAttr(l.id)}">▶</button></div>`,
         )
         .join('');
 }
@@ -547,7 +562,7 @@ function spawnMyTank() {
     document.getElementById('death-screen').style.display = 'none';
     updateInventoryUI();
     tank.color = session.myColor;
-    tank.camo = session.myCamo || 'none';
+    tank.camo = session.myCamo || '1';
     tank.turretColor = shadeColor(session.myColor, -20);
     tank.trackColor = shadeColor(session.myColor, -40);
     const SPAWN_BOX = 400;
@@ -628,12 +643,22 @@ function loop(ts) {
         const fpsEl = document.getElementById('fps-value');
         if (fpsEl) fpsEl.textContent = String(Math.round(fpsSmoothed));
     }
+    // Вычисляем камеру ДО simulation чтобы прицел совпадал с курсором
+    const sf = scaleFactor * zoomLevel;
+    const mdx = (gameKeys['MouseX'] || width / 2) - width / 2;
+    const mdy = (gameKeys['MouseY'] || height / 2) - height / 2;
+    const rawCX = tank.x + (mdx / sf) * 0.5;
+    const rawCY = tank.y + (mdy / sf) * 0.5;
+    const cc = clampCamera(rawCX, rawCY, width, height, sf, level.mapWidth, level.mapHeight);
+    camX = cc.x;
+    camY = cc.y;
+
     runSimulation(dt, {
         send: sendGameMessage,
         keys: gameKeys,
         width,
         height,
-        scaleFactor,
+        scaleFactor: sf,
         camX,
         camY,
         updateInventoryUI,
@@ -641,7 +666,7 @@ function loop(ts) {
     const cam = drawGameFrame(ctx, {
         width,
         height,
-        scaleFactor,
+        scaleFactor: scaleFactor * zoomLevel,
         keys: gameKeys,
         tank,
         enemyTanks,

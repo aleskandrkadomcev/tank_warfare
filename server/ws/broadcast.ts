@@ -40,7 +40,7 @@ export function broadcastLobbyState(lobby: Lobby): void {
             team: p.team,
             ready: p.ready,
             color: p.color,
-            camo: p.camo || 'none',
+            camo: p.camo || '1',
             isHost: p.id === lobby.hostId,
             isBot: Boolean(p.isBot),
         })),

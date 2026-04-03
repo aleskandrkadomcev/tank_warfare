@@ -94,7 +94,7 @@ export interface EnemyTank extends LocalTank {
 /** Минимум для движков в `session` (реализация — `TankEngine` в audio). */
 export type TankEngineHandle = {
     start: () => void;
-    update: (dt: number, throttle: number, brake: number) => void;
+    update: (dt: number, speedRatio: number, distFactor: number, pan?: number) => void;
 };
 
 export interface WorldHull {
@@ -107,6 +107,9 @@ export interface WorldHull {
 }
 
 export function bumpBricksDrawRevision(): void;
+
+export let zoomLevel: number;
+export function setZoomLevel(v: number): void;
 
 export const world: {
     bricks: WorldBrick[];

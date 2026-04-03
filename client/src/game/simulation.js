@@ -13,6 +13,7 @@ import {
 } from '../config/constants.js';
 import {
     calcPan,
+    calcVol,
     playAlert,
     playRocketFlyBy,
     playSound_BrickHit,
@@ -23,6 +24,7 @@ import {
     playSound_ShotHeavy,
     playSound_Smoke,
     playSound_Speed,
+    playSound_PickBonus,
     playSound_StoneHit,
     setListener,
 } from '../lib/audio.js';
@@ -87,8 +89,8 @@ export function runSimulation(dt, ctx) {
     }
     if (session.gameStarted && tank.hp > 0) updateInventoryUI();
     if (tank.hp <= 0 || tank.isDead) {
-        if (session.myEngine) session.myEngine.update(dt, 0, 0);
-        if (session.enemyEngine) session.enemyEngine.update(dt, 0, 0);
+        if (session.myEngine) session.myEngine.update(dt, 0, 0, 0);
+        if (session.enemyEngine) session.enemyEngine.update(dt, 0, 0, 0);
         // Обновляем эффекты даже после смерти (пули, партиклы, ракеты, взрывы, дым)
         updateEffectsOnly(dt);
         if (tank._respawnTimer > 0) {
@@ -273,18 +275,25 @@ export function runSimulation(dt, ctx) {
             }
         }
     }
-    const myDistFactor = Math.max(0, 1 - Math.hypot(tank.x - camX, tank.y - camY) / 1920);
-    let closestEnemyCamDist = 1920;
+    const ENGINE_RANGE = 2000;
+    const myDistFactor = Math.max(0, 1 - Math.hypot(tank.x - camX, tank.y - camY) / ENGINE_RANGE);
+    const myPan = (tank.x - camX) / 960;
+    let closestEnemyCamDist = ENGINE_RANGE;
+    let closestEnemyX = camX;
     for (const id in enemyTanks) {
         const et = enemyTanks[id];
         if (et.hp > 0) {
             const d = Math.hypot(et.x - camX, et.y - camY);
-            if (d < closestEnemyCamDist) closestEnemyCamDist = d;
+            if (d < closestEnemyCamDist) {
+                closestEnemyCamDist = d;
+                closestEnemyX = et.x;
+            }
         }
     }
-    const enemyDistFactor = Math.max(0, 1 - closestEnemyCamDist / 1920);
-    if (session.myEngine) session.myEngine.update(dt, mySpeedNorm, myDistFactor);
-    if (session.enemyEngine) session.enemyEngine.update(dt, enemySpeed / def.maxSpeedForward, enemyDistFactor);
+    const enemyDistFactor = Math.max(0, 1 - closestEnemyCamDist / ENGINE_RANGE);
+    const enemyPan = (closestEnemyX - camX) / 960;
+    if (session.myEngine) session.myEngine.update(dt, mySpeedNorm, myDistFactor, myPan);
+    if (session.enemyEngine) session.enemyEngine.update(dt, enemySpeed / def.maxSpeedForward, enemyDistFactor, enemyPan);
 
     if (tank.hp > 0) {
         const hpPct = tank.hp / def.hp;
@@ -295,8 +304,10 @@ export function runSimulation(dt, ctx) {
             if (Math.random() < 0.10) spawnParticles(burnX, burnY, '#555', 1, 'fire_smoke');
             if (Math.random() > 0.965) spawnParticles(burnX, burnY, '#fff', 1, 'burn_spark');
         } else if (hpPct <= 0.66 && Math.random() > 0.96) {
-            // Серый дым (33-66% HP)
-            spawnParticles(tank.x, tank.y, '#888', 1, 'smoke');
+            // Серый дым (33-66% HP) — спавн ближе к заду танка
+            const smokeX = tank.x - Math.cos(tank.angle) * 18;
+            const smokeY = tank.y - Math.sin(tank.angle) * 18;
+            spawnParticles(smokeX, smokeY, '#888', 1, 'smoke');
         }
     }
     for (const id in enemyTanks) {
@@ -310,7 +321,9 @@ export function runSimulation(dt, ctx) {
                 if (Math.random() < 0.10) spawnParticles(ebX, ebY, '#555', 1, 'fire_smoke');
                 if (Math.random() > 0.965) spawnParticles(ebX, ebY, '#fff', 1, 'burn_spark');
             } else if (etPct <= 0.66 && Math.random() > 0.96) {
-                spawnParticles(et.x, et.y, '#888', 1, 'smoke');
+                const esX = et.x - Math.cos(et.angle) * 18;
+                const esY = et.y - Math.sin(et.angle) * 18;
+                spawnParticles(esX, esY, '#888', 1, 'smoke');
             }
         }
     }
@@ -399,7 +412,7 @@ export function runSimulation(dt, ctx) {
         const sr = speedAbs / currentMaxSpeed;
         const sp = (Math.random() - 0.5) * sr * 5 * (Math.PI / 180) * 2;
         const a = tank.turretAngle + sp;
-        const bulletOff = tank.tankType === 'heavy' ? 60 : tank.tankType === 'medium' ? 84 : 55;
+        const bulletOff = tank.tankType === 'heavy' ? 98 : tank.tankType === 'medium' ? 84 : 55;
         const b = {
             x: tank.x + Math.cos(a) * bulletOff,
             y: tank.y + Math.sin(a) * bulletOff,
@@ -414,7 +427,7 @@ export function runSimulation(dt, ctx) {
         bullets.push(b);
         tank.reload = reloadTime;
         tank._reloadTotal = reloadTime;
-        const shotVol = Math.max(0, 1 - Math.hypot(camX - b.x, camY - b.y) / 1920);
+        const shotVol = calcVol(b.x, b.y, 1920);
         const shotPan = calcPan(b.x, b.y);
         if (tank.tankType === 'heavy') {
             playSound_ShotHeavy(shotVol, shotPan);
@@ -460,8 +473,7 @@ export function runSimulation(dt, ctx) {
         const bi = checkBulletBrickCollision(b.x, b.y, 2, mapW, mapH, bricks);
         if (bi >= 0) {
             spawnParticles(b.x, b.y, '#8b4513', 5);
-            const brickDist = Math.hypot(tank.x - b.x, tank.y - b.y);
-            playSound_BrickHit(Math.max(0, 1 - brickDist / 1920), calcPan(b.x, b.y));
+            playSound_BrickHit(calcVol(b.x, b.y, 1920), calcPan(b.x, b.y));
             const hx = bricks[bi].x;
             const hy = bricks[bi].y;
             bricks.splice(bi, 1);
@@ -478,8 +490,7 @@ export function runSimulation(dt, ctx) {
         // Пуля попала в камень — искры + звук, пуля исчезает, камень не разрушается
         if (stones.length && checkBulletStoneCollision(b.x, b.y, stones)) {
             spawnParticles(b.x, b.y, '#999', 4);
-            const stoneDist = Math.hypot(tank.x - b.x, tank.y - b.y);
-            playSound_StoneHit(Math.max(0, 1 - stoneDist / 1920), calcPan(b.x, b.y));
+            playSound_StoneHit(calcVol(b.x, b.y, 1920), calcPan(b.x, b.y));
             bullets.splice(i, 1);
             continue;
         }
@@ -488,8 +499,7 @@ export function runSimulation(dt, ctx) {
         for (const hull of world.hulls) {
             if (pointInsideObb(b.x, b.y, hull.x, hull.y, hull.angle, hull.w / 2, hull.h / 2)) {
                 createBulletHitEffect(b.x, b.y);
-                const hullDist = Math.hypot(tank.x - b.x, tank.y - b.y);
-                playSound_Hit(Math.max(0, 1 - hullDist / 1920), calcPan(b.x, b.y));
+                playSound_Hit(calcVol(b.x, b.y, 1920), calcPan(b.x, b.y));
                 bullets.splice(i, 1);
                 hitHull = true;
                 break;
@@ -693,27 +703,27 @@ function applyBoost(type, updateInventoryUI) {
     if (type === 0) {
         tank.healCount++;
         spawnParticles(tank.x, tank.y, '#4CAF50', 10);
-        playSound_Speed();
+        playSound_PickBonus(0.5);
     } else if (type === 1) {
         tank.damageBoostTimer += BOOST_DURATION;
         spawnParticles(tank.x, tank.y, '#ffeb3b', 10);
-        playSound_Speed();
+        playSound_PickBonus(0.5);
     } else if (type === 2) {
         tank.speedBoostTimer += BOOST_SPEED_DURATION;
         spawnParticles(tank.x, tank.y, '#2196F3', 10);
-        playSound_Speed();
+        playSound_PickBonus(0.5);
     } else if (type === 3) {
         tank.smokeCount++;
         spawnParticles(tank.x, tank.y, '#9C27B0', 10);
-        playSound_Speed();
+        playSound_PickBonus(0.5);
     } else if (type === 4) {
         tank.mineCount++;
         spawnParticles(tank.x, tank.y, '#333', 10);
-        playSound_Speed();
+        playSound_PickBonus(0.5);
     } else if (type === 5) {
         tank.rocketCount++;
         spawnParticles(tank.x, tank.y, '#ffeb3b', 10);
-        playSound_Speed();
+        playSound_PickBonus(0.5);
     }
     updateInventoryUI();
 }

@@ -15,8 +15,13 @@ export function setListener(x, y) {
 /** Вычисляет pan (-1 лево, +1 право) от позиции звука к слушателю */
 export function calcPan(sx, sy) {
   const dx = sx - listenerX;
-  // Pan пропорционален горизонтальному смещению — близкие звуки ближе к центру
   return Math.max(-1, Math.min(1, dx / 960));
+}
+
+/** Вычисляет громкость (0–1) по расстоянию от камеры до источника звука */
+export function calcVol(sx, sy, maxDist) {
+  const dist = Math.hypot(sx - listenerX, sy - listenerY);
+  return Math.max(0, 1 - dist / maxDist);
 }
 
 export function initAudio() {
@@ -113,6 +118,11 @@ export function playSound_Heal(vol = 1, pan = 0) {
 
 export function playSound_Speed() {
   for (let i = 0; i < 5; i++) setTimeout(() => tone(300 + i * 100, 0.04, 'square', 0.08), i * 20);
+}
+
+export function playSound_PickBonus(vol = 1) {
+  const s = assets.sounds.pickBonus1.cloneNode(true);
+  playSample(s, vol, 0);
 }
 
 export function playSound_Damage() {
@@ -258,8 +268,11 @@ export class TankEngine {
 
   start() {
     const master = this.ctx.createGain();
-    master.gain.value = this.isEnemy ? 0 : 0.2;
-    master.connect(masterGain);
+    master.gain.value = 0;
+    const panner = this.ctx.createStereoPanner();
+    panner.pan.value = 0;
+    master.connect(panner);
+    panner.connect(masterGain);
     const oscs = [];
     this.variant.harmonics.forEach((amp, i) => {
       const h = i + 1;
@@ -301,14 +314,16 @@ export class TankEngine {
     trackFlt.connect(trackGain);
     trackGain.connect(master);
     trackSrc.start();
-    this.nodes = { master, oscs, trackFlt, trackGain, lfo };
+    this.nodes = { master, panner, oscs, trackFlt, trackGain, lfo };
   }
 
-  update(dt, speedRatio, distFactor) {
+  update(dt, speedRatio, distFactor, pan) {
     if (!this.nodes) return;
-    if (this.isEnemy) {
-      const tv = 0.2 * distFactor;
-      this.nodes.master.gain.setTargetAtTime(tv, this.ctx.currentTime, 0.1);
+    // Громкость по расстоянию (0..0.2), пан лево-право
+    const tv = 0.24 * distFactor;
+    this.nodes.master.gain.setTargetAtTime(tv, this.ctx.currentTime, 0.1);
+    if (typeof pan === 'number') {
+      this.nodes.panner.pan.setTargetAtTime(Math.max(-1, Math.min(1, pan)), this.ctx.currentTime, 0.05);
     }
     this.targetRPM = this.variant.rpmMin + (this.variant.rpmMax - this.variant.rpmMin) * speedRatio;
     const step = (this.variant.rpmMax - this.variant.rpmMin) * dt * 2;

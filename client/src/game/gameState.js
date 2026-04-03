@@ -29,6 +29,10 @@ export function bumpBricksDrawRevision() {
     world.bricksDrawRevision++;
 }
 
+/** Зум камеры (1.0 = 100%, диапазон 0.7–1.3). */
+export let zoomLevel = 1.0;
+export function setZoomLevel(v) { zoomLevel = Math.max(0.7, Math.min(1.3, v)); }
+
 const defaultDef = getTankDef('medium');
 
 /** Локальный танк игрока, враги, счёт (2.2b). */
@@ -78,7 +82,7 @@ export const session = {
     myId: null,
     myTeam: 1,
     myColor: '#4CAF50',
-    myCamo: 'none',
+    myCamo: '1',
     myTankType: 'medium',
     playerData: {},
     myNickname: 'Игрок',

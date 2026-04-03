@@ -2,7 +2,7 @@
  * Локальные эффекты (частицы, следы, дым, взрывы) — мутация world, без сети.
  */
 import { MAX_TRACKS_IN_WORLD } from '../config/constants.js';
-import { calcPan, playSound_Explosion } from '../lib/audio.js';
+import { calcPan, calcVol, playSound_Explosion } from '../lib/audio.js';
 import { battle, world } from './gameState.js';
 
 const { particles, tracks, smokes, explosions } = world;
@@ -270,9 +270,7 @@ export function createExplosion(x, y, radius) {
         });
     }
 
-    const dist = Math.hypot(battle.tank.x - x, battle.tank.y - y);
-    const vol = Math.max(0, 1 - dist / 1920);
-    playSound_Explosion(vol, calcPan(x, y));
+    playSound_Explosion(calcVol(x, y, 2300), calcPan(x, y));
 }
 
 /**
@@ -338,7 +336,5 @@ export function createTankExplosion(x, y) {
         });
     }
 
-    const dist = Math.hypot(battle.tank.x - x, battle.tank.y - y);
-    const vol = Math.max(0, 1 - dist / 1920);
-    playSound_Explosion(vol, calcPan(x, y));
+    playSound_Explosion(calcVol(x, y, 2300), calcPan(x, y));
 }
