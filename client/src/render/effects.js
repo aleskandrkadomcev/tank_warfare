@@ -9,6 +9,12 @@ import { bakeLitSprite } from './lightingRenderer.js';
 /** Не рисуем частицы/дым с пренебрежимой непрозрачностью — экономия beginPath/arc/fill. */
 const PARTICLE_VIS_EPS = 0.002;
 
+/** Безопасный createRadialGradient — пропускает NaN/Infinity. */
+function safeRadialGradient(ctx, x, y, r0, r1) {
+    if (!isFinite(x) || !isFinite(y) || !isFinite(r1) || r1 <= 0) return null;
+    return ctx.createRadialGradient(x, y, r0, x, y, r1);
+}
+
 /* ── Offscreen-canvas для следов гусениц ── */
 let _trackCanvas = null;
 let _trackCtx = null;
@@ -136,7 +142,8 @@ export function drawMuzzleFlash(ctx, particles) {
         const radius = p.size * scaleFactor;
         ctx.globalAlpha = Math.min(lifeRatio * 4, 0.5); // макс 50%
         // Радиальный градиент: широкий белый центр → тонкий оранж край
-        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius);
+        const grad = safeRadialGradient(ctx, p.x, p.y, 0, radius);
+        if (!grad) continue;
         grad.addColorStop(0, `rgba(255,255,250,${(0.5 * 0.95).toFixed(2)})`);
         grad.addColorStop(0.55, `rgba(255,240,200,${(0.5 * 0.7).toFixed(2)})`);
         grad.addColorStop(0.8, `rgba(255,180,60,${(0.5 * 0.3).toFixed(2)})`);
@@ -156,7 +163,8 @@ export function drawMuzzleFlash(ctx, particles) {
         const t = Math.max(0, 1 - (life / maxLife));
         const radius = Math.max(1, p.size + t * 105);
         const alpha = Math.min(life / maxLife, 1);  // 1→0
-        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius);
+        const grad = safeRadialGradient(ctx, p.x, p.y, 0, radius);
+        if (!grad) continue;
         grad.addColorStop(0, `rgba(255,240,120,${(alpha * 0.95).toFixed(2)})`);
         grad.addColorStop(0.25, `rgba(255,210,60,${(alpha * 0.5).toFixed(2)})`);
         grad.addColorStop(1, 'rgba(255,180,30,0)');
@@ -206,7 +214,8 @@ export function drawExhaust(ctx, particles) {
         const life = Math.max(0, p.life);
         if (life < PARTICLE_VIS_EPS) continue;
         const r = p.size;
-        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
+        const grad = safeRadialGradient(ctx, p.x, p.y, 0, r);
+        if (!grad) continue;
         grad.addColorStop(0, `rgba(80,80,80,${(life * 0.6).toFixed(2)})`);
         grad.addColorStop(1, 'rgba(80,80,80,0)');
         ctx.fillStyle = grad;
@@ -334,7 +343,8 @@ export function drawExplosions(ctx, explosions) {
         const alpha = (1 - pr) * 0.5;  // 50%→0%
         if (alpha < 0.01) return;
         const radius = Math.max(1, e.radius * pr);
-        const grad = ctx.createRadialGradient(e.x, e.y, 0, e.x, e.y, radius);
+        const grad = safeRadialGradient(ctx, e.x, e.y, 0, radius);
+        if (!grad) return;
         grad.addColorStop(0, 'rgba(255,255,255,0)');
         grad.addColorStop(0.6, 'rgba(255,255,255,0)');
         grad.addColorStop(0.85, `rgba(255,255,255,${(alpha * 0.5).toFixed(2)})`);
@@ -355,7 +365,8 @@ export function drawExplosionDust(ctx, particles) {
         if (life < PARTICLE_VIS_EPS) continue;
         const lifeRatio = life / 4; // maxLife=4
         ctx.globalAlpha = Math.min(lifeRatio * 2, 0.75); // 75%→0
-        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size / 2);
+        const grad = safeRadialGradient(ctx, p.x, p.y, 0, p.size / 2);
+        if (!grad) continue;
         grad.addColorStop(0, 'rgba(121,102,71,0.75)');
         grad.addColorStop(1, 'rgba(121,102,71,0)');
         ctx.fillStyle = grad;
@@ -413,7 +424,8 @@ export function drawExplosionFire(ctx, particles) {
         const lifeRatio = Math.min(life / maxLife, 1);
         const radius = p.size;
         ctx.globalAlpha = Math.min(lifeRatio * 3, 0.5);
-        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius);
+        const grad = safeRadialGradient(ctx, p.x, p.y, 0, radius);
+        if (!grad) continue;
         grad.addColorStop(0, `rgba(255,255,250,${(0.5 * 0.95).toFixed(2)})`);
         grad.addColorStop(0.55, `rgba(255,240,200,${(0.5 * 0.7).toFixed(2)})`);
         grad.addColorStop(0.8, `rgba(255,180,60,${(0.5 * 0.3).toFixed(2)})`);
@@ -435,7 +447,8 @@ export function drawExplosionSparks(ctx, particles) {
 
         // Жёлтый glow (размытый, больше ядра)
         const glowR = p.size * 3;
-        const glowGrad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, glowR);
+        const glowGrad = safeRadialGradient(ctx, p.x, p.y, 0, glowR);
+        if (!glowGrad) continue;
         glowGrad.addColorStop(0, `rgba(255,220,60,${(alpha * 0.4).toFixed(2)})`);
         glowGrad.addColorStop(1, 'rgba(255,220,60,0)');
         ctx.fillStyle = glowGrad;
@@ -463,7 +476,8 @@ export function drawExplosionFlash(ctx, particles) {
         if (life < PARTICLE_VIS_EPS) continue;
         const alpha = life / 0.2; // 1→0
         const radius = p.size;
-        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius);
+        const grad = safeRadialGradient(ctx, p.x, p.y, 0, radius);
+        if (!grad) continue;
         grad.addColorStop(0, `rgba(255,255,255,${(alpha * 1.0).toFixed(2)})`);
         grad.addColorStop(0.5, `rgba(255,255,255,${(alpha * 0.5).toFixed(2)})`);
         grad.addColorStop(1, 'rgba(255,255,255,0)');
@@ -484,7 +498,8 @@ export function drawExplosionGlow(ctx, particles) {
         if (life < PARTICLE_VIS_EPS) continue;
         const alpha = Math.min(life / 0.3, 1) * 0.4; // макс 40%, затухает
         const radius = p.size;
-        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius);
+        const grad = safeRadialGradient(ctx, p.x, p.y, 0, radius);
+        if (!grad) continue;
         grad.addColorStop(0, `rgba(255,250,220,${alpha.toFixed(2)})`);
         grad.addColorStop(0.5, `rgba(255,240,180,${(alpha * 0.5).toFixed(2)})`);
         grad.addColorStop(1, 'rgba(255,230,150,0)');

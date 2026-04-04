@@ -97,11 +97,12 @@ export function generateMapData(mapSize?: string): MapData {
     let mapH = MAP_HEIGHT;
     if (mapSize === 'medium') { mapW = Math.round(MAP_WIDTH * 1.3); mapH = Math.round(MAP_HEIGHT * 1.3); }
     else if (mapSize === 'large') { mapW = Math.round(MAP_WIDTH * 1.6); mapH = Math.round(MAP_HEIGHT * 1.6); }
+    else if (mapSize === 'huge') { mapW = Math.round(MAP_WIDTH * 2.08); mapH = Math.round(MAP_HEIGHT * 2.08); }
 
     const bricks: { x: number; y: number }[] = [];
     const biome = 0;
     const buildings: { x: number; y: number; w: number; h: number }[] = [];
-    const buildingCount = mapSize === 'large' ? 24 : mapSize === 'medium' ? 20 : 15;
+    const buildingCount = mapSize === 'huge' ? 32 : mapSize === 'large' ? 24 : mapSize === 'medium' ? 20 : 15;
     // forestGroupsMax убран — кусты генерируются как отдельные объекты
 
     for (let i = 0; i < buildingCount; i++) {
@@ -198,7 +199,7 @@ function shuffle<T>(arr: T[]): T[] {
 
 function generateStoneClusters(bricks: { x: number; y: number }[], mapW: number, mapH: number, mapSize?: string): StonePos[] {
     const stones: StonePos[] = [];
-    const totalSpawns = mapSize === 'large' ? 30 : mapSize === 'medium' ? 21 : 15;
+    const totalSpawns = mapSize === 'huge' ? 40 : mapSize === 'large' ? 30 : mapSize === 'medium' ? 21 : 15;
     // Центры всех спавнов (кластеров и одиночных) для проверки минимального расстояния
     const spawnCenters: { x: number; y: number }[] = [];
 

@@ -57,8 +57,9 @@ export function drawTank(ctx, t) {
     if (skin) {
         ctx.drawImage(skin.base, -skin.base.width / 2, -skin.base.height / 2);
     } else {
-        const baseImg = assets.images.tankBase;
-        if (assets.loaded && baseImg.complete && baseImg.naturalWidth > 0) {
+        const fbSkin = assets.tankSkins[(t.tankType || 'medium')]?.['1'];
+        const baseImg = fbSkin?.base;
+        if (baseImg?.complete && baseImg.naturalWidth > 0) {
             ctx.drawImage(baseImg, -baseImg.naturalWidth / 2, -baseImg.naturalHeight / 2);
         } else {
             ctx.fillStyle = t.color;
@@ -109,8 +110,9 @@ export function drawTank(ctx, t) {
     if (skin) {
         ctx.drawImage(skin.turret, -skin.turret.width / 2, -skin.turret.height / 2);
     } else {
-        const turImg = assets.images.tankTurret;
-        if (assets.loaded && turImg.complete && turImg.naturalWidth > 0) {
+        const fbTurSkin = assets.tankSkins[(t.tankType || 'medium')]?.['1'];
+        const turImg = fbTurSkin?.turret;
+        if (turImg?.complete && turImg.naturalWidth > 0) {
             ctx.drawImage(turImg, -turImg.naturalWidth / 2, -turImg.naturalHeight / 2);
         } else {
             ctx.fillStyle = t.turretColor;

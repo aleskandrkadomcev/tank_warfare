@@ -377,9 +377,13 @@ function doStartGame(wss: WebSocketServer, lobby: import('../lobbyStore.js').Lob
     }
 }
 
-export function handleStartGame(wss: WebSocketServer, ws: WebSocket, _data: Record<string, unknown>): void {
+export function handleStartGame(wss: WebSocketServer, ws: WebSocket, data: Record<string, unknown>): void {
     const lobby = ws.lobbyId ? lobbies[ws.lobbyId] : undefined;
     if (!lobby || ws.id !== lobby.hostId || lobby.gameStarted || lobby.players.length < 1) return;
+    // Обновляем mapSize из запроса старта (хост мог поменять в лобби)
+    if (typeof data.mapSize === 'string' && ['small', 'medium', 'large', 'huge'].includes(data.mapSize)) {
+        lobby.mapSize = data.mapSize;
+    }
     // Если уже идёт отсчёт — игнорируем повторное нажатие
     if (lobby.countdownHandle) return;
     // Проверяем, все ли люди готовы

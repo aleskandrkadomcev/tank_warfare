@@ -46,74 +46,91 @@ function getMasterVolume() {
   return slider ? Number(slider.value) / 100 : 1;
 }
 
+/** Пул звуков — переиспользуем Audio элементы вместо бесконечного cloneNode */
+const soundPools = new Map();
+const POOL_SIZE = 6;
+
+function getPooledAudio(audioEl) {
+  const src = audioEl.src;
+  if (!soundPools.has(src)) {
+    const pool = [];
+    for (let i = 0; i < POOL_SIZE; i++) {
+      const a = audioEl.cloneNode(true);
+      a._poolSource = null;
+      pool.push(a);
+    }
+    soundPools.set(src, { pool, idx: 0 });
+  }
+  const entry = soundPools.get(src);
+  const a = entry.pool[entry.idx % entry.pool.length];
+  entry.idx++;
+  return a;
+}
+
 /** Воспроизводит UI-звук (без панорамы, просто громкость). */
 export function playUISound(audioEl, vol = 0.5) {
-  const clone = audioEl.cloneNode(true);
-  clone.volume = Math.max(0, Math.min(1, vol * getMasterVolume()));
-  clone.play().catch(() => { });
+  const a = getPooledAudio(audioEl);
+  a.volume = Math.max(0, Math.min(1, vol * getMasterVolume()));
+  a.currentTime = 0;
+  a.play().catch(() => { });
 }
 
 /**
  * Воспроизводит HTML Audio через Web Audio API с панорамой и громкостью.
- * Если audioCtx недоступен — фоллбэк на обычный .play().
  */
 function playSample(audioEl, vol, pan) {
+  const a = getPooledAudio(audioEl);
   if (!audioCtx || !masterGain) {
-    audioEl.volume = Math.max(0, Math.min(1, vol * getMasterVolume()));
-    audioEl.play().catch(() => { });
+    a.volume = Math.max(0, Math.min(1, vol * getMasterVolume()));
+    a.currentTime = 0;
+    a.play().catch(() => { });
     return;
   }
-  const source = audioCtx.createMediaElementSource(audioEl);
-  const panner = audioCtx.createStereoPanner();
-  panner.pan.value = Math.max(-1, Math.min(1, pan));
-  const gain = audioCtx.createGain();
-  gain.gain.value = Math.max(0, Math.min(1, vol));
-  source.connect(panner);
-  panner.connect(gain);
-  gain.connect(masterGain);
-  audioEl.play().catch(() => { });
-  audioEl.addEventListener('ended', () => {
-    source.disconnect(); panner.disconnect(); gain.disconnect();
-  }, { once: true });
+  // Переиспользуем MediaElementSource если уже создан
+  if (!a._poolSource) {
+    a._poolSource = audioCtx.createMediaElementSource(a);
+    const panner = audioCtx.createStereoPanner();
+    const gain = audioCtx.createGain();
+    a._poolSource.connect(panner);
+    panner.connect(gain);
+    gain.connect(masterGain);
+    a._poolPanner = panner;
+    a._poolGain = gain;
+  }
+  a._poolPanner.pan.value = Math.max(-1, Math.min(1, pan));
+  a._poolGain.gain.value = Math.max(0, Math.min(1, vol));
+  a.currentTime = 0;
+  a.play().catch(() => { });
 }
 
 export function playSound_Shot(vol = 1, pan = 0) {
-  const s = assets.sounds.shoot.cloneNode(true);
-  playSample(s, vol, pan);
+  playSample(assets.sounds.shoot, vol, pan);
 }
 
 export function playSound_ShotHeavy(vol = 1, pan = 0) {
-  const s = assets.sounds.shootHeavy.cloneNode(true);
-  playSample(s, vol, pan);
+  playSample(assets.sounds.shootHeavy, vol, pan);
 }
 
 export function playSound_Hit(vol = 1, pan = 0) {
-  const s = assets.sounds.hit.cloneNode(true);
-  playSample(s, vol, pan);
+  playSample(assets.sounds.hit, vol, pan);
 }
 
 export function playSound_Explosion(vol = 1, pan = 0) {
-  const s = assets.sounds.explosion.cloneNode(true);
-  playSample(s, vol, pan);
+  playSample(assets.sounds.explosion, vol, pan);
 }
 
 const brickHitVariants = ['brickHit1', 'brickHit2', 'brickHit3'];
 export function playSound_BrickHit(vol = 1, pan = 0) {
   const key = brickHitVariants[Math.floor(Math.random() * 3)];
-  const s = assets.sounds[key].cloneNode(true);
-  s.playbackRate = 0.9 + Math.random() * 0.5; // pitch 0.9–1.4
-  playSample(s, vol * 0.35, pan);
+  playSample(assets.sounds[key], vol * 0.35, pan);
 }
 
 export function playSound_StoneHit(vol = 1, pan = 0) {
-  const s = assets.sounds.brickHit1.cloneNode(true);
-  s.playbackRate = 0.9 + Math.random() * 0.5;
-  playSample(s, vol * 0.35, pan);
+  playSample(assets.sounds.brickHit1, vol * 0.35, pan);
 }
 
 export function playSound_Heal(vol = 1, pan = 0) {
-  const s = assets.sounds.repair.cloneNode(true);
-  playSample(s, vol, pan);
+  playSample(assets.sounds.repair, vol, pan);
 }
 
 export function playSound_Speed() {
@@ -121,8 +138,7 @@ export function playSound_Speed() {
 }
 
 export function playSound_PickBonus(vol = 1) {
-  const s = assets.sounds.pickBonus1.cloneNode(true);
-  playSample(s, vol, 0);
+  playSample(assets.sounds.pickBonus1, vol, 0);
 }
 
 export function playSound_Damage() {

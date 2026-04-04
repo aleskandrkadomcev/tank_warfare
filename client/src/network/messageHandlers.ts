@@ -195,7 +195,7 @@ function handleStart(d: Record<string, unknown>) {
     }
     // Инициализируем живую таблицу стат
     (battle as any).liveStats = ((d.allPlayers as any[]) || []).map((p: any) => ({
-        id: p.id, nick: p.nick, team: p.team,
+        id: p.id, nick: p.nick, team: p.team, tankType: p.tankType || 'medium',
         kills: 0, deaths: 0, damageDealt: 0, damageReceived: 0,
     }));
     gameMessageHooks.startGameClient();
@@ -236,13 +236,14 @@ function handleGameOver(d: Record<string, unknown>) {
     const tbody = document.getElementById('endgame-tbody');
     if (tbody) {
         tbody.innerHTML = '';
-        const stats = (d.stats as { id: string; nick: string; team: number; kills: number; deaths: number; damageDealt: number; damageReceived: number }[]) || [];
-        // Сортируем: сначала команда 1, потом 2, внутри — по убийствам
+        const TANK_NAMES: Record<string, string> = { light: 'Т-62', medium: 'Т-34-85', heavy: 'ИС-3' };
+        const stats = (d.stats as { id: string; nick: string; team: number; tankType?: string; kills: number; deaths: number; damageDealt: number; damageReceived: number }[]) || [];
         const sorted = [...stats].sort((a, b) => a.team - b.team || b.kills - a.kills);
         sorted.forEach((s) => {
             const tr = document.createElement('tr');
             tr.className = s.team === 1 ? 'team1-row' : 'team2-row';
-            tr.innerHTML = `<td>${s.nick}</td><td>${s.kills}</td><td>${s.deaths}</td><td>${s.damageDealt}</td><td>${s.damageReceived}</td>`;
+            const tankName = TANK_NAMES[s.tankType || ''] || s.tankType || '?';
+            tr.innerHTML = `<td>${s.nick}</td><td>${tankName}</td><td>${s.kills}</td><td>${s.deaths}</td><td>${s.damageDealt}</td><td>${s.damageReceived}</td>`;
             tbody.appendChild(tr);
         });
     }
@@ -436,8 +437,11 @@ function handleLaunchRocket(d: Record<string, unknown>) {
         startTime: performance.now(),
         duration: ROCKET_FLIGHT_TIME * 1000,
     });
-    playAlert();
-    if (d.ownerId !== session.myId) playRocketFlyBy(calcPan(d.tx as number, d.ty as number));
+    // Звук только для чужих ракет — свои уже играются в simulation.js
+    if (d.ownerId !== session.myId) {
+        playAlert();
+        playRocketFlyBy(calcPan(d.tx as number, d.ty as number));
+    }
 }
 
 function handleBricksDestroyBatch(d: Record<string, unknown>) {
@@ -512,7 +516,7 @@ function handleRestartMatch(d: Record<string, unknown>) {
     }
     world.hulls.length = 0;
     (battle as any).liveStats = ((d.allPlayers as any[]) || []).map((p: any) => ({
-        id: p.id, nick: p.nick, team: p.team,
+        id: p.id, nick: p.nick, team: p.team, tankType: p.tankType || 'medium',
         kills: 0, deaths: 0, damageDealt: 0, damageReceived: 0,
     }));
     battle.myScore = 0;

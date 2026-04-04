@@ -410,14 +410,14 @@ export function runSimulation(dt, ctx) {
 
     if (keys['MouseLeft'] && tank.reload <= 0) {
         const sr = speedAbs / currentMaxSpeed;
-        const sp = (Math.random() - 0.5) * sr * 5 * (Math.PI / 180) * 2;
+        const sp = (Math.random() - 0.5) * sr * 12 * (Math.PI / 180) * 2;
         const a = tank.turretAngle + sp;
         const bulletOff = tank.tankType === 'heavy' ? 98 : tank.tankType === 'medium' ? 84 : 55;
         const b = {
             x: tank.x + Math.cos(a) * bulletOff,
             y: tank.y + Math.sin(a) * bulletOff,
-            vx: Math.cos(a) * 1200,
-            vy: Math.sin(a) * 1200,
+            vx: Math.cos(a) * 1500,
+            vy: Math.sin(a) * 1500,
             ownerId: session.myId,
             ownerTeam: session.myTeam,
             damage: dmg,

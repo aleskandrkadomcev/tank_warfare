@@ -5,11 +5,30 @@ import bush2Url from '../game-assets/images/bush2.png?url';
 import bush2ShadowUrl from '../game-assets/images/bush2_shadow.png?url';
 import bush3Url from '../game-assets/images/bush3.png?url';
 import bush3ShadowUrl from '../game-assets/images/bush3_shadow.png?url';
-import tankBaseUrl from '../game-assets/images/MTank_base_color.png?url';
-import tankTurretUrl from '../game-assets/images/MTank_turret_color.png?url';
-import tankBaseNMUrl from '../game-assets/images/MTank_base_NM.png?url';
-import tankTurretNMUrl from '../game-assets/images/MTank_turret_NM.png?url';
-import tankTurretShadowUrl from '../game-assets/images/MTank_turret_shadow.png?url';
+import tankBaseNMUrl from '../game-assets/images/Tanks/T34/MTank_base_NM.png?url';
+import tankTurretNMUrl from '../game-assets/images/Tanks/T34/MTank_turret_NM.png?url';
+import tankTurretShadowUrl from '../game-assets/images/Tanks/T34/MTank_turret_shadow.png?url';
+// T34 скины (1-10)
+import mtBase1 from '../game-assets/images/Tanks/T34/MTank_base1.png?url';
+import mtBase2 from '../game-assets/images/Tanks/T34/MTank_base2.png?url';
+import mtBase3 from '../game-assets/images/Tanks/T34/MTank_base3.png?url';
+import mtBase4 from '../game-assets/images/Tanks/T34/MTank_base4.png?url';
+import mtBase5 from '../game-assets/images/Tanks/T34/MTank_base5.png?url';
+import mtBase6 from '../game-assets/images/Tanks/T34/MTank_base6.png?url';
+import mtBase7 from '../game-assets/images/Tanks/T34/MTank_base7.png?url';
+import mtBase8 from '../game-assets/images/Tanks/T34/MTank_base8.png?url';
+import mtBase9 from '../game-assets/images/Tanks/T34/MTank_base9.png?url';
+import mtBase10 from '../game-assets/images/Tanks/T34/MTank_base10.png?url';
+import mtTur1 from '../game-assets/images/Tanks/T34/MTank_turret1.png?url';
+import mtTur2 from '../game-assets/images/Tanks/T34/MTank_turret2.png?url';
+import mtTur3 from '../game-assets/images/Tanks/T34/MTank_turret3.png?url';
+import mtTur4 from '../game-assets/images/Tanks/T34/MTank_turret4.png?url';
+import mtTur5 from '../game-assets/images/Tanks/T34/MTank_turret5.png?url';
+import mtTur6 from '../game-assets/images/Tanks/T34/MTank_turret6.png?url';
+import mtTur7 from '../game-assets/images/Tanks/T34/MTank_turret7.png?url';
+import mtTur8 from '../game-assets/images/Tanks/T34/MTank_turret8.png?url';
+import mtTur9 from '../game-assets/images/Tanks/T34/MTank_turret9.png?url';
+import mtTur10 from '../game-assets/images/Tanks/T34/MTank_turret10.png?url';
 import tankLightBaseNMUrl from '../game-assets/images/Tanks/T62/t62_base_NM.png?url';
 import tankLightTurretNMUrl from '../game-assets/images/Tanks/T62/t62_turret_NM.png?url';
 import tankLightTurretShadowUrl from '../game-assets/images/Tanks/T62/t62_turret_shadow.png?url';
@@ -34,11 +53,26 @@ import t62Tur7 from '../game-assets/images/Tanks/T62/t62_turret7.png?url';
 import t62Tur8 from '../game-assets/images/Tanks/T62/t62_turret8.png?url';
 import t62Tur9 from '../game-assets/images/Tanks/T62/t62_turret9.png?url';
 import t62Tur10 from '../game-assets/images/Tanks/T62/t62_turret10.png?url';
-import tankHeavyBaseUrl from '../game-assets/images/is3_base1.png?url';
-import tankHeavyTurretUrl from '../game-assets/images/is3_turret1.png?url';
-import tankHeavyBaseNMUrl from '../game-assets/images/is3_base_NM.png?url';
-import tankHeavyTurretNMUrl from '../game-assets/images/is3_turret1_NM.png?url';
-import tankHeavyTurretShadowUrl from '../game-assets/images/is3_turret_shadow.png?url';
+import tankHeavyBaseNMUrl from '../game-assets/images/Tanks/IS3/is3_base_NM.png?url';
+import tankHeavyTurretNMUrl from '../game-assets/images/Tanks/IS3/is3_turret1_NM.png?url';
+import tankHeavyTurretShadowUrl from '../game-assets/images/Tanks/IS3/is3_turret_shadow.png?url';
+// IS3 скины (1-8)
+import is3Base1 from '../game-assets/images/Tanks/IS3/is3_base1.png?url';
+import is3Base2 from '../game-assets/images/Tanks/IS3/is3_base2.png?url';
+import is3Base3 from '../game-assets/images/Tanks/IS3/is3_base3.png?url';
+import is3Base4 from '../game-assets/images/Tanks/IS3/is3_base4.png?url';
+import is3Base5 from '../game-assets/images/Tanks/IS3/is3_base5.png?url';
+import is3Base6 from '../game-assets/images/Tanks/IS3/is3_base6.png?url';
+import is3Base7 from '../game-assets/images/Tanks/IS3/is3_base7.png?url';
+import is3Base8 from '../game-assets/images/Tanks/IS3/is3_base8.png?url';
+import is3Tur1 from '../game-assets/images/Tanks/IS3/is3_turret1.png?url';
+import is3Tur2 from '../game-assets/images/Tanks/IS3/is3_turret2.png?url';
+import is3Tur3 from '../game-assets/images/Tanks/IS3/is3_turret3.png?url';
+import is3Tur4 from '../game-assets/images/Tanks/IS3/is3_turret4.png?url';
+import is3Tur5 from '../game-assets/images/Tanks/IS3/is3_turret5.png?url';
+import is3Tur6 from '../game-assets/images/Tanks/IS3/is3_turret6.png?url';
+import is3Tur7 from '../game-assets/images/Tanks/IS3/is3_turret7.png?url';
+import is3Tur8 from '../game-assets/images/Tanks/IS3/is3_turret8.png?url';
 import shadowBrickUrl from '../game-assets/images/shadow_brick.png?url';
 import brickUrl from '../game-assets/images/brick.png?url';
 // shadow_forest.png убран — теперь используем bush2_shadow / bush3_shadow
@@ -85,7 +119,7 @@ import click1Url from '../game-assets/sounds/click1.mp3?url';
 import click2Url from '../game-assets/sounds/click2.mp3?url';
 import pickBonus1Url from '../game-assets/sounds/pick_bonus1.mp3?url';
 
-const totalAssets = 77; // 59 - 2 (old light) + 20 (T62 skins)
+const totalAssets = 109; // 59 - 6 (old base/turret) + 20 (T62) + 16 (IS3) + 20 (T34)
 let assetsLoadedCount = 0;
 
 function checkAssetsLoaded(assets) {
@@ -106,16 +140,12 @@ function createAssets() {
       bush2Shadow: new Image(),
       bush3: new Image(),
       bush3Shadow: new Image(),
-      tankBase: new Image(),
-      tankTurret: new Image(),
       tankBaseNM: new Image(),
       tankTurretNM: new Image(),
       tankTurretShadow: new Image(),
       tankLightBaseNM: new Image(),
       tankLightTurretNM: new Image(),
       tankLightTurretShadow: new Image(),
-      tankHeavyBase: new Image(),
-      tankHeavyTurret: new Image(),
       tankHeavyBaseNM: new Image(),
       tankHeavyTurretNM: new Image(),
       tankHeavyTurretShadow: new Image(),
@@ -184,8 +214,6 @@ function createAssets() {
   assets.images.bush2Shadow.src = bush2ShadowUrl;
   assets.images.bush3.src = bush3Url;
   assets.images.bush3Shadow.src = bush3ShadowUrl;
-  assets.images.tankBase.src = tankBaseUrl;
-  assets.images.tankTurret.src = tankTurretUrl;
   assets.images.tankBaseNM.src = tankBaseNMUrl;
   assets.images.tankTurretNM.src = tankTurretNMUrl;
   assets.images.tankTurretShadow.src = tankTurretShadowUrl;
@@ -201,11 +229,23 @@ function createAssets() {
     const t = new Image(); t.src = t62Turs[i]; t.onload = () => checkAssetsLoaded(assets);
     assets.tankSkins.light[String(i + 1)] = { base: b, turret: t };
   }
-  // Medium/Heavy — пока 1 скин (уже загруженные images)
-  assets.tankSkins.medium['1'] = { base: assets.images.tankBase, turret: assets.images.tankTurret };
-  assets.tankSkins.heavy['1'] = { base: assets.images.tankHeavyBase, turret: assets.images.tankHeavyTurret };
-  assets.images.tankHeavyBase.src = tankHeavyBaseUrl;
-  assets.images.tankHeavyTurret.src = tankHeavyTurretUrl;
+  // T34 скины (medium)
+  const mtBases = [mtBase1, mtBase2, mtBase3, mtBase4, mtBase5, mtBase6, mtBase7, mtBase8, mtBase9, mtBase10];
+  const mtTurs = [mtTur1, mtTur2, mtTur3, mtTur4, mtTur5, mtTur6, mtTur7, mtTur8, mtTur9, mtTur10];
+  for (let i = 0; i < 10; i++) {
+    const b = new Image(); b.src = mtBases[i]; b.onload = () => checkAssetsLoaded(assets);
+    const t = new Image(); t.src = mtTurs[i]; t.onload = () => checkAssetsLoaded(assets);
+    assets.tankSkins.medium[String(i + 1)] = { base: b, turret: t };
+  }
+
+  // IS3 скины (heavy)
+  const is3Bases = [is3Base1, is3Base2, is3Base3, is3Base4, is3Base5, is3Base6, is3Base7, is3Base8];
+  const is3Turs = [is3Tur1, is3Tur2, is3Tur3, is3Tur4, is3Tur5, is3Tur6, is3Tur7, is3Tur8];
+  for (let i = 0; i < 8; i++) {
+    const b = new Image(); b.src = is3Bases[i]; b.onload = () => checkAssetsLoaded(assets);
+    const t = new Image(); t.src = is3Turs[i]; t.onload = () => checkAssetsLoaded(assets);
+    assets.tankSkins.heavy[String(i + 1)] = { base: b, turret: t };
+  }
   assets.images.tankHeavyBaseNM.src = tankHeavyBaseNMUrl;
   assets.images.tankHeavyTurretNM.src = tankHeavyTurretNMUrl;
   assets.images.tankHeavyTurretShadow.src = tankHeavyTurretShadowUrl;

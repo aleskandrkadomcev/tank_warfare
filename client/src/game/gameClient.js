@@ -153,8 +153,17 @@ const SKIN_NAMES = {
         { id: '7', label: 'Серый' }, { id: '8', label: 'Молния' }, { id: '9', label: 'Пустыня' },
         { id: '10', label: 'Лес' },
     ],
-    medium: [{ id: '1', label: 'Стандартный' }],
-    heavy: [{ id: '1', label: 'Стандартный' }],
+    medium: [
+        { id: '1', label: 'Стандартный' }, { id: '2', label: 'Болото' }, { id: '3', label: 'Охотник' },
+        { id: '4', label: 'Лес' }, { id: '5', label: 'Пустыня' }, { id: '6', label: 'Пепел' },
+        { id: '7', label: 'Городской' }, { id: '8', label: 'Тигриный' }, { id: '9', label: 'Аниме' },
+        { id: '10', label: 'Старый' },
+    ],
+    heavy: [
+        { id: '1', label: 'Стандартный' }, { id: '2', label: 'Зима' }, { id: '3', label: 'Лес' },
+        { id: '4', label: 'Городской' }, { id: '5', label: 'Песок' }, { id: '6', label: 'Пустыня' },
+        { id: '7', label: 'Серый' }, { id: '8', label: 'Инферно' },
+    ],
 };
 
 function initSkinSelector() {
@@ -697,6 +706,8 @@ function loop(ts) {
     requestAnimationFrame(loop);
 }
 
+const TANK_DISPLAY_NAMES = { light: 'Т-62', medium: 'Т-34-85', heavy: 'ИС-3' };
+
 function updateTabScoreboard() {
     const overlay = document.getElementById('tab-scoreboard');
     if (!overlay) return;
@@ -711,7 +722,8 @@ function updateTabScoreboard() {
     sorted.forEach((s) => {
         const tr = document.createElement('tr');
         tr.className = s.team === 1 ? 'team1-row' : 'team2-row';
-        tr.innerHTML = `<td>${s.nick}</td><td>${s.kills}</td><td>${s.deaths}</td><td>${s.damageDealt}</td><td>${s.damageReceived}</td>`;
+        const tankName = TANK_DISPLAY_NAMES[s.tankType] || s.tankType || '?';
+        tr.innerHTML = `<td>${s.nick}</td><td>${tankName}</td><td>${s.kills}</td><td>${s.deaths}</td><td>${s.damageDealt}</td><td>${s.damageReceived}</td>`;
         tbody.appendChild(tr);
     });
 }

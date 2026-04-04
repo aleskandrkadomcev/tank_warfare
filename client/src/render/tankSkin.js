@@ -97,6 +97,8 @@ function quantizeAngle(rad) {
  * Получает освещённый спрайт для конкретного мирового угла.
  * Спрайт в локальной ориентации, свет повёрнут на -angle.
  */
+const LIT_CACHE_MAX = 800; // лимит кеша чтобы не убить память/GPU
+
 function getLitPart(partKey, colorImg, normalImg, angleDeg, tankType) {
     const cacheKey = `${tankType || 'medium'}|${partKey}|${angleDeg}`;
     if (litCache.has(cacheKey)) return litCache.get(cacheKey);
@@ -105,6 +107,11 @@ function getLitPart(partKey, colorImg, normalImg, angleDeg, tankType) {
     const canvas = bakeLitSprite(colorImg, normalImg, REALISTIC_SCALE, worldAngle);
     if (!canvas) return null;
 
+    // Очищаем старые записи если кеш слишком большой
+    if (litCache.size >= LIT_CACHE_MAX) {
+        const firstKey = litCache.keys().next().value;
+        litCache.delete(firstKey);
+    }
     litCache.set(cacheKey, canvas);
     return canvas;
 }

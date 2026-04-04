@@ -362,7 +362,7 @@ export function handleRestartMatch(wss: WebSocketServer, ws: WebSocket, _data: R
         initBotsForStart(lobby);
         stopAiTick(lobby);
         startAiTick(wss, lobby);
-        const allPlayers = lobby.players.map((p) => ({ id: p.id, nick: p.nickname || 'Bot', team: p.team }));
+        const allPlayers = lobby.players.map((p) => ({ id: p.id, nick: p.nickname || 'Bot', team: p.team, tankType: p.tankType || 'medium' }));
         broadcastGame(lobby, { type: ServerMsg.RESTART_MATCH, map: lobby.mapData, allPlayers });
     }
 }
@@ -413,6 +413,7 @@ export function handleDeath(_wss: WebSocketServer, ws: WebSocket, _data: Record<
                 id: p.id,
                 nick: p.nickname || 'Bot',
                 team: p.team,
+                tankType: p.tankType || 'medium',
                 ...(lobby.stats[p.id!] || { kills: 0, deaths: 0, damageDealt: 0, damageReceived: 0 }),
             }));
             broadcastGame(lobby, { type: ServerMsg.GAME_OVER, winner, stats: playerStats });

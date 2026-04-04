@@ -66,6 +66,7 @@ export function broadcastScores(lobby: Lobby): void {
         id: p.id,
         nick: p.nickname || 'Bot',
         team: p.team,
+        tankType: p.tankType || 'medium',
         ...(lobby.stats[p.id!] || { kills: 0, deaths: 0, damageDealt: 0, damageReceived: 0 }),
     }));
     broadcastGame(lobby, { type: ServerMsg.SCORE_UPDATE, scores: lobby.scores, stats: playerStats });
