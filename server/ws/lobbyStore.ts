@@ -105,6 +105,8 @@ export type Lobby = {
     countdown: number;
     /** Направление ветра (радианы). */
     windAngle: number;
+    /** Время старта матча (Date.now()). */
+    gameStartedAt: number;
 };
 
 export const lobbies: Record<string, Lobby> = {};

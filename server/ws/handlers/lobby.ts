@@ -54,6 +54,7 @@ export function handleCreateLobby(wss: WebSocketServer, ws: WebSocket, data: Rec
         countdownHandle: null,
         countdown: 0,
         windAngle: 0,
+        gameStartedAt: 0,
     };
     ws.send(
         JSON.stringify({
@@ -323,6 +324,7 @@ function doStartGame(wss: WebSocketServer, lobby: import('../lobbyStore.js').Lob
     if (lobby.gameStarted) return;
     lobby.gameStarted = true;
     lobby.roundOver = false;
+    lobby.gameStartedAt = Date.now();
     const mapSize = lobby.mapSize || 'small';
     console.log('[DEBUG] handleStartGame mapSize =', mapSize);
     lobby.mapData = generateMapData(mapSize);

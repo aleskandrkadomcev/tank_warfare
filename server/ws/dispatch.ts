@@ -28,6 +28,7 @@ import {
     handleLaunchRocket,
     handleUseHeal,
 } from './handlers/world.js';
+import { saveFeedback } from '../data/dataStore.js';
 
 type DispatchFn = (wss: WebSocketServer, ws: WebSocket, data: Record<string, unknown>) => void;
 
@@ -55,6 +56,13 @@ const handlers: Partial<Record<string, DispatchFn>> = {
     [ClientMsg.USE_HEAL]: handleUseHeal,
     [ClientMsg.REJOIN_LOBBY]: handleRejoinLobby,
     [ClientMsg.LOBBY_CHAT]: handleLobbyChat,
+    [ClientMsg.FEEDBACK]: (_wss, ws, data) => {
+        const nick = typeof data.nick === 'string' ? data.nick.slice(0, 24) : 'Аноним';
+        const text = typeof data.text === 'string' ? data.text.slice(0, 2000) : '';
+        if (!text.trim()) return;
+        saveFeedback(nick, text.trim());
+        ws.send(JSON.stringify({ type: 'feedback_ok' }));
+    },
 };
 
 /** Проверка: на каждое значение `ClientMsg` назначен хендлер (юнит-тест + опционально dev-старт). */

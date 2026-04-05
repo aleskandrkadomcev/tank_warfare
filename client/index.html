@@ -13,7 +13,7 @@
   <div id="menu">
     <h2>TANKS: WARFARE</h2>
     <div id="version-line">
-      <span id="game-version">v0.5.0</span>
+      <span id="game-version">v0.5.1</span>
       <button id="btnChangelog" type="button">Что нового?</button>
     </div>
     <button id="btnRejoinGame" type="button" style="display:none; width:100%; padding:12px; margin-bottom:12px; background:#ff9800; color:#000; font-size:16px; font-weight:bold; border:none; border-radius:8px; cursor:pointer">Вернуться в игру</button>
@@ -29,6 +29,23 @@
     <input type="text" id="roomIdInput" placeholder="Или код лобби" style="width: 150px" />
     <button id="btnJoin" type="button">🔗 ВОЙТИ ПО КОДУ</button>
     <div id="status" class="status"></div>
+    <button id="btnFeedback" type="button" style="margin-top:10px; background:#333; color:#aaa; border:1px solid #555; padding:6px 14px; border-radius:4px; cursor:pointer; font-size:13px">💬 Предложения и баги</button>
+  </div>
+
+  <!-- Форма фидбека -->
+  <div id="feedback-overlay" style="display:none">
+    <div id="feedback-panel">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px">
+        <h3 style="margin:0; color:#fff">Предложения и баги</h3>
+        <button id="btnFeedbackClose" type="button" style="background:none; border:none; color:#aaa; font-size:20px; cursor:pointer">✕</button>
+      </div>
+      <label style="color:#aaa; font-size:13px">Ваш никнейм</label>
+      <input type="text" id="feedbackNick" maxlength="24" style="width:100%; padding:8px; margin:5px 0 12px; background:#2a2a2a; color:#fff; border:1px solid #555; border-radius:4px; box-sizing:border-box" />
+      <label style="color:#aaa; font-size:13px">Опишите предложение или баг</label>
+      <textarea id="feedbackText" rows="6" maxlength="2000" style="width:100%; padding:8px; margin:5px 0 12px; background:#2a2a2a; color:#fff; border:1px solid #555; border-radius:4px; box-sizing:border-box; resize:vertical"></textarea>
+      <button id="btnFeedbackSend" type="button" style="width:100%; padding:10px; background:#4caf50; color:#fff; border:none; border-radius:6px; font-size:14px; cursor:pointer">Отправить</button>
+      <div id="feedbackStatus" style="margin-top:8px; font-size:13px; text-align:center"></div>
+    </div>
   </div>
   <div id="lobby-wrapper">
   <div id="lobby">

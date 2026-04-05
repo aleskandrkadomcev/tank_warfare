@@ -2,6 +2,7 @@ node_modules/
 client/dist/
 shared/dist/
 server/dist/
+server/data/*.json
 .env
 *.log
 .DS_Store

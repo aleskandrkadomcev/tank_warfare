@@ -28,6 +28,7 @@ export const ClientMsg = Object.freeze({
     USE_HEAL: 'use_heal',
     REJOIN_LOBBY: 'rejoin_lobby',
     LOBBY_CHAT: 'lobby_chat',
+    FEEDBACK: 'feedback',
 } as const);
 
 export const ServerMsg = Object.freeze({

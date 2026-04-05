@@ -149,6 +149,29 @@ function setupEscMenu() {
 // ── Ченжлог ──
 const CHANGELOG = [
     {
+        version: 'v0.5.1', date: '06.04.2026', title: 'Фидбек, статистика, баланс',
+        sections: [
+            { name: 'Новое', items: [
+                'Кнопка «Предложения и баги» — пишите что хотите улучшить!',
+                'Ченжлог — кнопка «Что нового?» на главном экране',
+                'Статистика матчей сохраняется на сервере',
+                'ESC меню: громкость, фуллскрин, выход из игры',
+            ]},
+            { name: 'Боты', items: [
+                'Сложность: Новобранец 🟢 / Боец 🟡 / Ветеран 🔴 (выбор в лобби)',
+                'Тактика: ТТ стоп-выстрел-отъезд, СТ обход, ЛТ зигзаг-отступление',
+                'ЛТ при низком HP ищет хилку на поле',
+                'Боты стреляют по кирпичам в поисках бонусов',
+                'Не видят через стены, не стреляют ракетой вслепую',
+                'Pathfinding с учётом габаритов танка',
+            ]},
+            { name: 'Баланс', items: [
+                'КД выстрела ×2 (ЛТ 2с, СТ 3с, ТТ 5с)',
+                'Скорость снаряда 1500, разброс на ходу ±12°',
+            ]},
+        ],
+    },
+    {
         version: 'v0.5.0', date: '05.04.2026', title: 'Скины, боты, зум',
         sections: [
             { name: 'Новые танки и скины', items: [
@@ -246,12 +269,52 @@ function setupChangelog() {
     }, true); // capture чтобы перехватить до ESC меню
 }
 
+// ── Фидбек ──
+function setupFeedback() {
+    const overlay = document.getElementById('feedback-overlay');
+    if (!overlay) return;
+    const nickInput = document.getElementById('feedbackNick');
+    const textInput = document.getElementById('feedbackText');
+    const statusEl = document.getElementById('feedbackStatus');
+
+    document.getElementById('btnFeedback')?.addEventListener('click', () => {
+        overlay.style.display = 'flex';
+        if (nickInput) nickInput.value = session.myNickname || '';
+        if (textInput) textInput.value = '';
+        if (statusEl) statusEl.textContent = '';
+    });
+    document.getElementById('btnFeedbackClose')?.addEventListener('click', () => {
+        overlay.style.display = 'none';
+    });
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) overlay.style.display = 'none';
+    });
+
+    document.getElementById('btnFeedbackSend')?.addEventListener('click', () => {
+        const nick = nickInput?.value?.trim() || 'Аноним';
+        const text = textInput?.value?.trim() || '';
+        if (!text) {
+            if (statusEl) { statusEl.style.color = '#f44336'; statusEl.textContent = 'Напишите что-нибудь!'; }
+            return;
+        }
+        if (isGameSocketOpen()) {
+            sendGameMessage({ type: ClientMsg.FEEDBACK, nick, text });
+            if (statusEl) { statusEl.style.color = '#4caf50'; statusEl.textContent = 'Отправлено! Спасибо 🙏'; }
+            if (textInput) textInput.value = '';
+            setTimeout(() => { overlay.style.display = 'none'; }, 1500);
+        } else {
+            if (statusEl) { statusEl.style.color = '#f44336'; statusEl.textContent = 'Нет подключения к серверу'; }
+        }
+    });
+}
+
 window.addEventListener('load', () => {
     const nickInput = document.getElementById('nicknameInput');
     if (nickInput) nickInput.value = sessionStorage.getItem('tank_nickname_session') || '';
     initSkinSelector();
     setupEscMenu();
     setupChangelog();
+    setupFeedback();
     updateLobbyListUI([]);
     setupUISounds();
     connect();

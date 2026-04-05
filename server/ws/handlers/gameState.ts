@@ -17,6 +17,7 @@ import { lineBlockedByStones, obbIntersectsObb } from '../../game/collision.js';
 import { lobbies, type Lobby, type LobbyHull } from '../lobbyStore.js';
 import { generateMapData } from '../../game/mapGenerator.js';
 import { initBotsForStart, startAiTick, stopAiTick } from '../bots.js';
+import { saveMatchStats } from '../../data/dataStore.js';
 
 function pruneExpiredSmokes(lobby: (typeof lobbies)[string], now: number): void {
     lobby.smokes = lobby.smokes.filter((s) => s.expiresAt > now);
@@ -417,6 +418,25 @@ export function handleDeath(_wss: WebSocketServer, ws: WebSocket, _data: Record<
                 ...(lobby.stats[p.id!] || { kills: 0, deaths: 0, damageDealt: 0, damageReceived: 0 }),
             }));
             broadcastGame(lobby, { type: ServerMsg.GAME_OVER, winner, stats: playerStats });
+            // Сохраняем статистику матча
+            try {
+                saveMatchStats({
+                    date: new Date().toISOString(),
+                    durationSec: Math.round((Date.now() - (lobby.gameStartedAt || Date.now())) / 1000),
+                    mapSize: lobby.mapSize || 'small',
+                    scoreLimit: lobby.scoreLimit,
+                    winner,
+                    scores: lobby.scores,
+                    players: lobby.players.map((p) => ({
+                        id: p.id!,
+                        nick: p.nickname || 'Bot',
+                        team: p.team,
+                        tankType: p.tankType || 'medium',
+                        isBot: Boolean(p.isBot),
+                        ...(lobby.stats[p.id!] || { kills: 0, deaths: 0, damageDealt: 0, damageReceived: 0 }),
+                    })),
+                });
+            } catch (_) { /* не крашим игру из-за записи */ }
         } else {
             broadcastGame(lobby, { type: ServerMsg.PLAYER_DIED, playerId: ws.id, x: hullX, y: hullY });
         }
