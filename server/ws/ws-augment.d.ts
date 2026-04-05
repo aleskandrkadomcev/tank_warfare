@@ -42,6 +42,16 @@ declare module 'ws' {
             pathKey: string;
             lastPathAt: number;
             stuckTicks: number;
+            _patrolX: number;
+            _patrolY: number;
+            _patrolSetAt: number;
+            _lastAbilityAt: number;
+            _enemyMemory: Record<string, { x: number; y: number; seenAt: number }>;
+            _tactState: 'advance' | 'aiming' | 'retreat' | 'seekHeal';
+            _tactTimer: number;
+            _lastBrickShot: number;
+            _boostTargetId: string | null;
+            _boostCheckAt: number;
         };
     }
 }
