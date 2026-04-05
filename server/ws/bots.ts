@@ -37,6 +37,23 @@ const BOT_BULLET_TTL = 2400;
 const BOT_BULLET_HIT_RADIUS = 24;
 const BOT_PATH_REBUILD_MS = 900;
 const BOT_STUCK_LIMIT = 6;
+
+/** Параметры сложности: 1=Новобранец, 2=Боец, 3=Ветеран */
+const DIFFICULTY_PRESETS: Record<number, {
+    shotDelayMs: number;    // доп. задержка перед выстрелом
+    spreadMult: number;     // множитель разброса
+    decisionMs: number;     // задержка смены цели
+    abilityCdMs: number;    // кулдаун абилок
+    memoryMs: number;       // память о враге
+    label: string;
+}> = {
+    1: { shotDelayMs: 800, spreadMult: 3.0, decisionMs: 500, abilityCdMs: 99999, memoryMs: 5000, label: 'Новобранец' },
+    2: { shotDelayMs: 300, spreadMult: 1.5, decisionMs: 250, abilityCdMs: 5000, memoryMs: 10000, label: 'Боец' },
+    3: { shotDelayMs: 0,   spreadMult: 1.0, decisionMs: 100, abilityCdMs: 2000, memoryMs: 15000, label: 'Ветеран' },
+};
+function getDiffPreset(bot: WebSocket) {
+    return DIFFICULTY_PRESETS[bot.botDifficulty ?? 2] || DIFFICULTY_PRESETS[2];
+}
 const BOT_WAYPOINT_REACH = 30;
 
 function clamp(value: number, min: number, max: number): number {
@@ -137,11 +154,11 @@ function makeBotActor(lobby: Lobby, team?: number, difficulty = 1): WebSocket {
         vy: 0,
         hp: TANK_MAX_HP,
         spawnTime: Date.now(),
-        botDifficulty: clamp(difficulty, 0.5, 3),
+        botDifficulty: clamp(difficulty, 1, 3),
         botBrain: {
             targetId: null,
             wanderAngle: Math.random() * Math.PI * 2,
-            lastShotAt: 0,
+            lastShotAt: Date.now(),
             nextDecisionAt: 0,
             path: [],
             pathKey: '',
@@ -150,8 +167,14 @@ function makeBotActor(lobby: Lobby, team?: number, difficulty = 1): WebSocket {
             _patrolX: 0,
             _patrolY: 0,
             _patrolSetAt: 0,
-            _lastAbilityAt: 0,
+            _lastAbilityAt: Date.now(),
             _enemyMemory: {} as Record<string, { x: number; y: number; seenAt: number }>,
+            // Тактические состояния
+            _tactState: 'advance' as 'advance' | 'aiming' | 'retreat' | 'seekHeal',
+            _tactTimer: 0,           // когда сменить состояние
+            _lastBrickShot: 0,       // таймер стрельбы по кирпичам просто так
+            _boostTargetId: null as string | null, // id буста к которому едем
+            _boostCheckAt: 0,        // таймер проверки бустов
         },
         readyState: 1,
         send: () => { },
@@ -299,9 +322,32 @@ function clearBotPath(bot: WebSocket): void {
     bot.botBrain.stuckTicks = 0;
 }
 
-const MEMORY_EXPIRE_MS = 15_000; // забываем врага через 15 сек
+// MEMORY_EXPIRE_MS теперь из getDiffPreset(bot).memoryMs
 
 function getMovementGoal(bot: WebSocket, lobby: Lobby, target: WebSocket | null): { x: number; y: number } {
+    const brain = bot.botBrain;
+
+    // ЛТ seekHeal: убегает и ищет хилку
+    if (brain?._tactState === 'seekHeal') {
+        const now = Date.now();
+        if (now > brain._tactTimer || bot.hp / getTankDef(bot.tankType).hp >= 0.7) {
+            brain._tactState = 'advance'; // время вышло или подлечился
+        } else {
+            // Ищем буст-хилку (type 0) в радиусе 1000
+            const healBoost = lobby.boosts.find((b) => b.type === 0 && Math.hypot(b.x - bot.x, b.y - bot.y) < 1000);
+            if (healBoost) return { x: healBoost.x, y: healBoost.y };
+            // Нет хилки — стреляем по кирпичам (надеемся найти) и бродим
+            const map = lobby.mapData;
+            if (map) {
+                if (!brain._patrolX || Math.hypot(brain._patrolX - bot.x, brain._patrolY - bot.y) < 60) {
+                    brain._patrolX = bot.x + (Math.random() - 0.5) * 600;
+                    brain._patrolY = bot.y + (Math.random() - 0.5) * 600;
+                }
+                return { x: brain._patrolX, y: brain._patrolY };
+            }
+        }
+    }
+
     if (!target || !target.lastPos) {
         const map = lobby.mapData;
         const brain = bot.botBrain;
@@ -313,7 +359,7 @@ function getMovementGoal(bot: WebSocket, lobby: Lobby, target: WebSocket | null)
             let freshestKey: string | null = null;
             let freshestTime = 0;
             for (const id in mem) {
-                if (now - mem[id].seenAt > MEMORY_EXPIRE_MS) {
+                if (now - mem[id].seenAt > getDiffPreset(bot).memoryMs) {
                     delete mem[id]; // протухла
                     continue;
                 }
@@ -357,7 +403,8 @@ function getMovementGoal(bot: WebSocket, lobby: Lobby, target: WebSocket | null)
     }
 
     const targetPos = getActorPosition(target);
-    if (lineBlocked(lobby, bot.x, bot.y, targetPos.x, targetPos.y)) {
+    // Всегда используем A* pathfinding (не едем напрямую в камни/стены)
+    {
         const grid = lobby.aiGrid;
         if (grid && bot.botBrain) {
             const start = worldToCell(bot.x, bot.y, grid);
@@ -375,7 +422,7 @@ function getMovementGoal(bot: WebSocket, lobby: Lobby, target: WebSocket | null)
                 bot.botBrain.pathKey = pathKey;
                 bot.botBrain.lastPathAt = now;
                 bot.botBrain.stuckTicks = 0;
-                bot.botBrain.path = path.length > 0 ? path : [{ x: targetPos.x, y: targetPos.y }];
+                bot.botBrain.path = path; // пустой если путь не найден — бот будет стрелять по кирпичам
             }
 
             while (bot.botBrain.path.length > 0) {
@@ -391,30 +438,82 @@ function getMovementGoal(bot: WebSocket, lobby: Lobby, target: WebSocket | null)
 
     clearBotPath(bot);
 
-    // Тактика по типу танка при прямой видимости
     const dist = Math.hypot(targetPos.x - bot.x, targetPos.y - bot.y);
     const ttype = bot.tankType || 'medium';
+    const now = Date.now();
+    const botDef = getTankDef(ttype);
+    const hpPct = bot.hp / botDef.hp;
+    if (!brain) return targetPos;
 
-    if (ttype === 'light' && dist < 400) {
-        // ЛТ: отступает если враг близко — стреляет на ходу
-        const awayAngle = Math.atan2(bot.y - targetPos.y, bot.x - targetPos.x);
-        const strafeAngle = awayAngle + (Math.sin(Date.now() / 800) * 0.8); // зигзаг
-        return {
-            x: bot.x + Math.cos(strafeAngle) * 200,
-            y: bot.y + Math.sin(strafeAngle) * 200,
-        };
+    // ЛТ при низком HP: убегает искать хилку
+    if (ttype === 'light' && hpPct < 0.5 && brain._tactState !== 'seekHeal') {
+        brain._tactState = 'seekHeal';
+        brain._tactTimer = now + 15000; // 15 сек на поиск
     }
 
-    if (ttype === 'medium' && dist < 250) {
-        // СТ: маневрирует рядом, не прёт в лоб
-        const circleAngle = Math.atan2(targetPos.y - bot.y, targetPos.x - bot.x) + Math.PI / 2;
-        return {
-            x: bot.x + Math.cos(circleAngle) * 150,
-            y: bot.y + Math.sin(circleAngle) * 150,
-        };
+    // Все танки при <50% HP: выстрел-отъехал (кроме ЛТ который убегает)
+    if (hpPct < 0.5 && ttype !== 'light') {
+        if (brain._tactState === 'advance') brain._tactState = 'aiming';
     }
 
-    // ТТ и остальные: прут к цели
+    // --- Тактика по типу ---
+
+    if (ttype === 'heavy') {
+        // ТТ: стоп → выстрел → назад 4 сек → снова вперёд
+        if (brain._tactState === 'advance') {
+            if (dist < BOT_FIRE_DISTANCE) {
+                brain._tactState = 'aiming';
+            }
+            return targetPos; // едем к врагу
+        }
+        if (brain._tactState === 'aiming') {
+            // Стоим, ждём выстрела — moveBotTowards не вызовется (цель = свои координаты)
+            if (now - brain.lastShotAt < 300) {
+                // Только что выстрелил — переключаемся на отъезд
+                brain._tactState = 'retreat';
+                brain._tactTimer = now + 4000;
+            }
+            return { x: bot.x, y: bot.y }; // стоим
+        }
+        if (brain._tactState === 'retreat') {
+            if (now > brain._tactTimer) {
+                brain._tactState = 'advance';
+            }
+            // Едем задом от врага
+            const awayAngle = Math.atan2(bot.y - targetPos.y, bot.x - targetPos.x);
+            return { x: bot.x + Math.cos(awayAngle) * 150, y: bot.y + Math.sin(awayAngle) * 150 };
+        }
+    }
+
+    if (ttype === 'medium') {
+        // СТ: маневрирует, при низком HP — выстрел-отъехал
+        if (brain._tactState === 'retreat') {
+            if (now > brain._tactTimer) brain._tactState = 'advance';
+            const awayAngle = Math.atan2(bot.y - targetPos.y, bot.x - targetPos.x);
+            const strafe = awayAngle + (Math.sin(now / 600) * 0.6);
+            return { x: bot.x + Math.cos(strafe) * 180, y: bot.y + Math.sin(strafe) * 180 };
+        }
+        if (brain._tactState === 'aiming' && now - brain.lastShotAt < 300) {
+            brain._tactState = 'retreat';
+            brain._tactTimer = now + 2500;
+        }
+        if (dist < 300) {
+            const circleAngle = Math.atan2(targetPos.y - bot.y, targetPos.x - bot.x) + Math.PI / 2 * (Math.sin(now / 2000) > 0 ? 1 : -1);
+            return { x: bot.x + Math.cos(circleAngle) * 150, y: bot.y + Math.sin(circleAngle) * 150 };
+        }
+        return targetPos;
+    }
+
+    if (ttype === 'light') {
+        // ЛТ: зигзаг на дистанции, отступает
+        if (dist < 500) {
+            const awayAngle = Math.atan2(bot.y - targetPos.y, bot.x - targetPos.x);
+            const strafeAngle = awayAngle + (Math.sin(now / 700) * 0.9);
+            return { x: bot.x + Math.cos(strafeAngle) * 250, y: bot.y + Math.sin(strafeAngle) * 250 };
+        }
+        return targetPos;
+    }
+
     return targetPos;
 }
 
@@ -655,11 +754,9 @@ function stepBotBullets(wss: WebSocketServer, lobby: Lobby, dtSec: number): void
 
 function findTarget(lobby: Lobby, bot: WebSocket): WebSocket | null {
     const now = Date.now();
-    // Два списка: цели в прямой линии огня и цели за укрытием
-    let bestClear: WebSocket | null = null;
-    let bestClearDist = Infinity;
-    let bestAny: WebSocket | null = null;
-    let bestAnyDist = Infinity;
+    let best: WebSocket | null = null;
+    let bestDist = Infinity;
+    let bestIsClear = false;
     lobby.players.forEach((player) => {
         if (player.id === bot.id || player.team === bot.team || !isAlivePlayer(player)) return;
         if (player.lastPosAt && now - player.lastPosAt > 1000) return;
@@ -668,23 +765,21 @@ function findTarget(lobby: Lobby, bot: WebSocket): WebSocket | null {
         const dist = Math.hypot(x - bot.x, y - bot.y);
         const viewDist = getTankDef(bot.tankType).detectionRadius;
         if (dist > viewDist) return;
+        // Проверяем лес/дым
         if (!botCanSeeTarget(lobby, bot.x, bot.y, x, y, dist, bot.tankType)) return;
-        // Запоминаем позицию врага
+        // Проверяем кирпичи/камни
+        const blocked = lineBlocked(lobby, bot.x, bot.y, x, y);
+        if (blocked) return; // за стеной — НЕ видим
+        // Запоминаем позицию врага (только если реально видим)
         if (bot.botBrain?._enemyMemory && player.id) {
             bot.botBrain._enemyMemory[player.id] = { x, y, seenAt: now };
         }
-        const blocked = lineBlocked(lobby, bot.x, bot.y, x, y);
-        if (!blocked && dist < bestClearDist) {
-            bestClear = player;
-            bestClearDist = dist;
-        }
-        if (dist < bestAnyDist) {
-            bestAny = player;
-            bestAnyDist = dist;
+        if (dist < bestDist) {
+            best = player;
+            bestDist = dist;
         }
     });
-    // Приоритет: цель по которой можно попасть, иначе — ближайшая видимая (для движения)
-    return bestClear ?? bestAny;
+    return best;
 }
 
 function rotateTurretTowards(bot: WebSocket, targetAngle: number, dtSec: number): void {
@@ -698,8 +793,9 @@ function rotateTurretTowards(bot: WebSocket, targetAngle: number, dtSec: number)
     }
 }
 
-function aimAndMove(bot: WebSocket, target: WebSocket | null, dtSec: number, lobby: Lobby): void {
-    const goal = getMovementGoal(bot, lobby, target);
+function aimAndMove(bot: WebSocket, target: WebSocket | null, dtSec: number, lobby: Lobby, boostGoal?: { x: number; y: number } | null): void {
+    const moveGoal = boostGoal || getMovementGoal(bot, lobby, target);
+    const goal = moveGoal;
     const brain = bot.botBrain;
     // Если застрял и перед ботом кирпич — целиться в кирпич
     const stuckAndBrick = brain && brain.stuckTicks >= 1 && lobby.mapData;
@@ -742,18 +838,19 @@ function aimAndMove(bot: WebSocket, target: WebSocket | null, dtSec: number, lob
             return false;
         })();
 
-        if (stoneAhead && bot.botBrain.stuckTicks >= 2) {
-            // Камень впереди — резкий разворот на ±90° и назад
+        if (stoneAhead && bot.botBrain.stuckTicks >= 1) {
+            // Камень впереди — разворот на ±90-120° и установить новую точку патруля в стороне
             const side = Math.random() > 0.5 ? 1 : -1;
-            const escapeAngle = bot.angle + side * (Math.PI / 2 + Math.random() * 0.5);
-            const escapeGoal = {
-                x: bot.x + Math.cos(escapeAngle) * 150,
-                y: bot.y + Math.sin(escapeAngle) * 150,
-            };
-            moveBotTowards(bot, escapeGoal, dtSec, lobby);
+            const escapeAngle = bot.angle + side * (Math.PI / 2 + Math.random() * 0.7);
+            const escapeX = bot.x + Math.cos(escapeAngle) * 250;
+            const escapeY = bot.y + Math.sin(escapeAngle) * 250;
+            moveBotTowards(bot, { x: escapeX, y: escapeY }, dtSec, lobby);
+            // Ставим патруль в точку объезда — бот будет ехать туда 3-5 сек
+            bot.botBrain._patrolX = escapeX;
+            bot.botBrain._patrolY = escapeY;
+            bot.botBrain._patrolSetAt = Date.now();
             bot.botBrain.stuckTicks = 0;
             clearBotPath(bot);
-            bot.botBrain._patrolSetAt = 0; // сменить точку патруля
         } else if (bot.botBrain.stuckTicks >= BOT_STUCK_LIMIT * 3) {
             const reverseGoal = {
                 x: bot.x - Math.cos(bot.angle) * 100,
@@ -826,7 +923,7 @@ function maybeShoot(lobby: Lobby, bot: WebSocket, target: WebSocket | null): voi
     const now = Date.now();
     const brain = bot.botBrain;
     if (!brain) return;
-    const difficulty = bot.botDifficulty ?? 1;
+    const preset = getDiffPreset(bot);
     const tx = target.lastPos.x;
     const ty = target.lastPos.y;
     const distance = Math.hypot(tx - bot.x, ty - bot.y);
@@ -843,14 +940,14 @@ function maybeShoot(lobby: Lobby, bot: WebSocket, target: WebSocket | null): voi
         && botCanSeeTarget(lobby, bot.x, bot.y, tx, ty, distance, bot.tankType);
     const botDef = getTankDef(bot.tankType);
     const baseReloadMs = botDef.reloadTime * 1000;
-    const shotCooldown = Math.max(400, baseReloadMs - difficulty * 120);
+    const shotCooldown = baseReloadMs + preset.shotDelayMs;
     if (distance > BOT_FIRE_DISTANCE || Math.abs(aimError) > BOT_AIM_THRESHOLD || !canSee) return;
     if (now - brain.lastShotAt < shotCooldown) return;
 
     const bulletId = `bot_b_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const ownerId = bot.id ?? `bot_${Date.now()}`;
     const leadAngle = Math.atan2(leadY - bot.y, leadX - bot.x);
-    const aimAngle = leadAngle + (Math.random() - 0.5) * ((3 - difficulty) * 0.06);
+    const aimAngle = leadAngle + (Math.random() - 0.5) * 0.06 * preset.spreadMult;
     const vx = Math.cos(aimAngle) * BOT_BULLET_SPEED;
     const vy = Math.sin(aimAngle) * BOT_BULLET_SPEED;
     const botBulletDmg = botDef.bulletDamage;
@@ -892,7 +989,8 @@ function maybeUseAbility(wss: WebSocketServer, lobby: Lobby, bot: WebSocket, tar
     if (!brain) return;
     const now = Date.now();
     // Кулдаун абилок — не чаще раза в 2 сек
-    if (now - (brain._lastAbilityAt ?? 0) < 2000) return;
+    const diffPreset = getDiffPreset(bot);
+    if (now - (brain._lastAbilityAt ?? 0) < diffPreset.abilityCdMs) return;
     const botDef = getTankDef(bot.tankType);
     const hpPct = bot.hp / botDef.hp;
 
@@ -911,9 +1009,12 @@ function maybeUseAbility(wss: WebSocketServer, lobby: Lobby, bot: WebSocket, tar
     const tx = target.lastPos.x;
     const ty = target.lastPos.y;
     const dist = Math.hypot(tx - bot.x, ty - bot.y);
+    // Проверяем что бот реально видит цель (не через стену)
+    const canSeeTarget = !lineBlocked(lobby, bot.x, bot.y, tx, ty)
+        && botCanSeeTarget(lobby, bot.x, bot.y, tx, ty, dist, bot.tankType);
 
-    // 2. Ракета — если враг далеко (300-700px) и есть ракета
-    if ((bot.rocketCount ?? 0) > 0 && dist > 300 && dist < 700) {
+    // 2. Ракета — если враг виден, далеко (300-700px) и есть ракета
+    if ((bot.rocketCount ?? 0) > 0 && dist > 300 && dist < 700 && canSeeTarget) {
         bot.rocketCount!--;
         handleLaunchRocket(wss, bot, { tx, ty });
         brain._lastAbilityAt = now;
@@ -965,6 +1066,73 @@ function botPickupBoosts(lobby: Lobby, bot: WebSocket): void {
     }
 }
 
+/** Стреляет по ближайшему кирпичу просто так (ЛТ/СТ). Возвращает true если выстрелил. */
+function maybeShootBrickRandom(lobby: Lobby, bot: WebSocket): boolean {
+    const brain = bot.botBrain;
+    if (!brain) return false;
+    const ttype = bot.tankType || 'medium';
+    if (ttype === 'heavy') return false; // тяжи не стреляют просто так
+    const now = Date.now();
+    const interval = ttype === 'light' ? (3000 + Math.random() * 2000) : (4000 + Math.random() * 4000);
+    if (now - brain._lastBrickShot < interval) return false;
+    // Есть ли враг рядом? Не стреляем по кирпичам в бою
+    if (brain.targetId) return false;
+    const map = lobby.mapData;
+    if (!map) return false;
+    const brickTarget = findBrickAhead(bot, map);
+    if (!brickTarget) return false;
+    const botDef = getTankDef(ttype);
+    if (now - brain.lastShotAt < botDef.reloadTime * 1000) return false;
+    const aimAngle = Math.atan2(brickTarget.y - bot.y, brickTarget.x - bot.x);
+    if (Math.abs(normalizeAngle(aimAngle - bot.turretAngle)) > 0.3) return false;
+    const bulletId = `bot_b_${now}_${Math.random().toString(36).slice(2, 7)}`;
+    lobby.aiBullets.push({
+        bulletId, x: bot.x, y: bot.y,
+        vx: Math.cos(aimAngle) * BOT_BULLET_SPEED, vy: Math.sin(aimAngle) * BOT_BULLET_SPEED,
+        ownerId: bot.id!, ownerTeam: bot.team,
+        damage: botDef.bulletDamage, createdAt: now, ttl: 2000,
+    });
+    broadcastGame(lobby, {
+        type: ServerMsg.BULLET, x: bot.x, y: bot.y, angle: aimAngle,
+        vx: Math.cos(aimAngle) * BOT_BULLET_SPEED, vy: Math.sin(aimAngle) * BOT_BULLET_SPEED,
+        ownerId: bot.id, ownerTeam: bot.team, bulletId,
+    });
+    brain.lastShotAt = now;
+    brain._lastBrickShot = now;
+    return true;
+}
+
+/** Проверяет бусты в радиусе 250px раз в секунду. Возвращает цель если есть. */
+function checkNearbyBoost(lobby: Lobby, bot: WebSocket): { x: number; y: number } | null {
+    const brain = bot.botBrain;
+    if (!brain) return null;
+    const now = Date.now();
+    if (now - brain._boostCheckAt < 1000) {
+        // Между проверками: если есть цель-буст — продолжаем к ней
+        if (brain._boostTargetId) {
+            const b = lobby.boosts.find((b) => b.id === brain._boostTargetId);
+            if (b) return { x: b.x, y: b.y };
+            brain._boostTargetId = null; // буст подобран кем-то
+        }
+        return null;
+    }
+    brain._boostCheckAt = now;
+    // Не отвлекаемся на бусты в бою
+    if (brain.targetId) { brain._boostTargetId = null; return null; }
+    let closest: typeof lobby.boosts[0] | null = null;
+    let closestDist = 250;
+    for (const b of lobby.boosts) {
+        const d = Math.hypot(b.x - bot.x, b.y - bot.y);
+        if (d < closestDist) { closest = b; closestDist = d; }
+    }
+    if (closest) {
+        brain._boostTargetId = closest.id;
+        return { x: closest.x, y: closest.y };
+    }
+    brain._boostTargetId = null;
+    return null;
+}
+
 function updateBot(wss: WebSocketServer, lobby: Lobby, bot: WebSocket, dtSec: number): void {
     const now = Date.now();
     if (!lobby.gameStarted) return;
@@ -1000,14 +1168,21 @@ function updateBot(wss: WebSocketServer, lobby: Lobby, bot: WebSocket, dtSec: nu
         } else {
             bot.botBrain.targetId = target.id;
         }
-        bot.botBrain.nextDecisionAt = now + 150 + Math.random() * 150;
+        const dp = getDiffPreset(bot);
+        bot.botBrain.nextDecisionAt = now + dp.decisionMs + Math.random() * dp.decisionMs;
     }
 
     const target = bot.botBrain.targetId ? lobby.players.find((p) => p.id === bot.botBrain?.targetId) ?? null : findTarget(lobby, bot);
-    aimAndMove(bot, target, dtSec, lobby);
-    // Приоритет: стрелять в кирпич если застрял, иначе — по врагу
+
+    // Приоритет бустов — перехватываем цель движения
+    const boostGoal = checkNearbyBoost(lobby, bot);
+
+    aimAndMove(bot, target, dtSec, lobby, boostGoal);
+    // Приоритет: стрелять в кирпич если застрял → по кирпичам просто так → по врагу
     if (!maybeShootBrick(lobby, bot)) {
-        maybeShoot(lobby, bot, target);
+        if (!maybeShootBrickRandom(lobby, bot)) {
+            maybeShoot(lobby, bot, target);
+        }
     }
     maybeUseAbility(wss, lobby, bot, target);
     // Подбор бустов

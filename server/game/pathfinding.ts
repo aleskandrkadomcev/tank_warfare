@@ -13,7 +13,8 @@ export type GridCell = { col: number; row: number };
 
 export type GridPoint = { x: number; y: number };
 
-const DEFAULT_CELL_SIZE = BRICK_SIZE / 2;
+const DEFAULT_CELL_SIZE = 32; // крупнее = быстрее A*, но грубее
+const TANK_HALF_WIDTH = 28;  // раздутие препятствий — полуширина танка
 
 function indexOf(grid: BotPathGrid, col: number, row: number): number {
     return row * grid.cols + col;
@@ -24,11 +25,12 @@ export function buildBotPathGrid(map: MapData, cellSize = DEFAULT_CELL_SIZE): Bo
     const rows = Math.ceil(map.h / cellSize);
     const blocked = new Uint8Array(cols * rows);
 
+    // Кирпичи + раздутие на полуширину танка
     for (const brick of map.bricks) {
-        const startCol = Math.max(0, Math.floor(brick.x / cellSize));
-        const endCol = Math.min(cols - 1, Math.floor((brick.x + BRICK_SIZE - 1) / cellSize));
-        const startRow = Math.max(0, Math.floor(brick.y / cellSize));
-        const endRow = Math.min(rows - 1, Math.floor((brick.y + BRICK_SIZE - 1) / cellSize));
+        const startCol = Math.max(0, Math.floor((brick.x - TANK_HALF_WIDTH) / cellSize));
+        const endCol = Math.min(cols - 1, Math.floor((brick.x + BRICK_SIZE + TANK_HALF_WIDTH - 1) / cellSize));
+        const startRow = Math.max(0, Math.floor((brick.y - TANK_HALF_WIDTH) / cellSize));
+        const endRow = Math.min(rows - 1, Math.floor((brick.y + BRICK_SIZE + TANK_HALF_WIDTH - 1) / cellSize));
         for (let row = startRow; row <= endRow; row++) {
             for (let col = startCol; col <= endCol; col++) {
                 blocked[indexOf({ cellSize, cols, rows, blocked }, col, row)] = 1;
@@ -41,17 +43,17 @@ export function buildBotPathGrid(map: MapData, cellSize = DEFAULT_CELL_SIZE): Bo
         for (const stone of map.stones) {
             const circles = getStoneWorldCircles(stone);
             for (const c of circles) {
-                const startCol = Math.max(0, Math.floor((c.cx - c.r) / cellSize));
-                const endCol = Math.min(cols - 1, Math.floor((c.cx + c.r) / cellSize));
-                const startRow = Math.max(0, Math.floor((c.cy - c.r) / cellSize));
-                const endRow = Math.min(rows - 1, Math.floor((c.cy + c.r) / cellSize));
+                const startCol = Math.max(0, Math.floor((c.cx - c.r - TANK_HALF_WIDTH) / cellSize));
+                const endCol = Math.min(cols - 1, Math.floor((c.cx + c.r + TANK_HALF_WIDTH) / cellSize));
+                const startRow = Math.max(0, Math.floor((c.cy - c.r - TANK_HALF_WIDTH) / cellSize));
+                const endRow = Math.min(rows - 1, Math.floor((c.cy + c.r + TANK_HALF_WIDTH) / cellSize));
                 for (let row = startRow; row <= endRow; row++) {
                     for (let col = startCol; col <= endCol; col++) {
                         const cellCx = col * cellSize + cellSize / 2;
                         const cellCy = row * cellSize + cellSize / 2;
                         const dx = cellCx - c.cx;
                         const dy = cellCy - c.cy;
-                        if (dx * dx + dy * dy < (c.r + cellSize * 0.5) * (c.r + cellSize * 0.5)) {
+                        if (dx * dx + dy * dy < (c.r + TANK_HALF_WIDTH) * (c.r + TANK_HALF_WIDTH)) {
                             blocked[indexOf({ cellSize, cols, rows, blocked }, col, row)] = 1;
                         }
                     }

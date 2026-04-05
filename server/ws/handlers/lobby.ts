@@ -446,7 +446,11 @@ export function handleRemoveBot(wss: WebSocketServer, ws: WebSocket, data: Recor
         return;
     }
     const botId = typeof data.botId === 'string' ? data.botId : undefined;
-    const index = lobby.players.findIndex((p) => p.isBot && (!botId || p.id === botId));
+    // Удаляем последнего бота (или конкретного по id)
+    let index = -1;
+    for (let i = lobby.players.length - 1; i >= 0; i--) {
+        if (lobby.players[i].isBot && (!botId || lobby.players[i].id === botId)) { index = i; break; }
+    }
     if (index === -1) {
         ws.send(JSON.stringify({ type: ServerMsg.ERROR, msg: 'Bot not found' }));
         return;

@@ -21,7 +21,21 @@ export function mountLobbyUI() {
     document.querySelector('.team-btn.t2')?.addEventListener('click', () => setTeam(2));
     document.getElementById('btnReady')?.addEventListener('click', () => toggleReady());
     document.getElementById('btnStart')?.addEventListener('click', () => startGame());
-    document.getElementById('btnAddBot')?.addEventListener('click', () => addBot());
+    document.getElementById('btnAddBotMain')?.addEventListener('click', () => {
+        const menu = document.getElementById('botDiffMenu');
+        if (menu) menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+    });
+    document.getElementById('botDiffMenu')?.addEventListener('click', (e) => {
+        const item = e.target.closest('[data-diff]');
+        if (!item) return;
+        const diff = parseInt(item.getAttribute('data-diff'), 10);
+        addBot(diff);
+        document.getElementById('botDiffMenu').style.display = 'none';
+    });
+    document.addEventListener('click', (e) => {
+        const menu = document.getElementById('botDiffMenu');
+        if (menu && !e.target.closest('#btnAddBot')) menu.style.display = 'none';
+    });
     document.getElementById('btnRemoveBot')?.addEventListener('click', () => removeBot());
     document.getElementById('btnLeaveLobby')?.addEventListener('click', () => { sessionStorage.removeItem('lobbyReconnect'); location.reload(); });
     document.getElementById('lobby-chat-send')?.addEventListener('click', () => sendChatMessage());

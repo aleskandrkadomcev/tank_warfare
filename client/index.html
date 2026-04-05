@@ -84,7 +84,14 @@
       <button id="btnStart" type="button" style="display: none; background: #ffeb3b; color: #000; margin-left: 10px">
         🎮 НАЧАТЬ БОЙ
       </button>
-      <button id="btnAddBot" type="button" style="display: none; margin-left: 10px">🤖 ДОБАВИТЬ БОТА</button>
+      <div id="btnAddBot" style="display: none; position: relative; margin-left: 10px; display: inline-block">
+        <button id="btnAddBotMain" type="button">🤖 ДОБАВИТЬ БОТА ▾</button>
+        <div id="botDiffMenu" style="display:none; position:absolute; top:100%; left:0; background:#333; border:1px solid #555; border-radius:4px; z-index:200; min-width:140px">
+          <div class="dd-item" data-diff="1">🟢 Новобранец</div>
+          <div class="dd-item" data-diff="2">🟡 Боец</div>
+          <div class="dd-item" data-diff="3">🔴 Ветеран</div>
+        </div>
+      </div>
       <button id="btnRemoveBot" type="button" style="display: none; margin-left: 10px">🗑 УБРАТЬ БОТА</button>
       <button id="btnLeaveLobby" type="button" style="margin-left: 10px; background: #666; color: #fff">Выйти</button>
     </div>
@@ -99,7 +106,24 @@
     </div>
   </div>
   </div>
-  <div id="volume-control">🔊 <input type="range" min="0" max="100" value="100" id="volumeSlider" /></div>
+  <!-- ESC меню -->
+  <div id="esc-menu" style="display:none">
+    <div id="esc-menu-panel">
+      <h3 style="margin:0 0 15px; color:#fff">ПАУЗА</h3>
+      <div style="margin:10px 0">
+        <label style="color:#aaa; font-size:14px">Громкость</label><br>
+        <input type="range" min="0" max="100" value="100" id="volumeSlider" style="width:200px; margin-top:5px" />
+      </div>
+      <button id="escBtnFullscreen" type="button" class="esc-btn">На весь экран: ВЫКЛ</button>
+      <button id="escBtnResume" type="button" class="esc-btn" style="background:#4caf50">Продолжить</button>
+      <button id="escBtnQuit" type="button" class="esc-btn" style="background:#f44336">Выйти из игры</button>
+      <div id="escQuitConfirm" style="display:none; margin-top:10px">
+        <span style="color:#ff9800">Точно выйти?</span>
+        <button id="escQuitYes" type="button" class="esc-btn-small">Да</button>
+        <button id="escQuitNo" type="button" class="esc-btn-small">Нет</button>
+      </div>
+    </div>
+  </div>
   <div id="ui-game">
     <div id="fps-hud" class="fps-hud" aria-live="polite"><span id="fps-value">—</span> FPS</div>
   </div>

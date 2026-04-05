@@ -94,10 +94,63 @@ function setupUISounds() {
         }
     }, { passive: true });
 }
+let escMenuOpen = false;
+
+function toggleEscMenu(forceClose) {
+    if (!session.gameStarted) return;
+    const menu = document.getElementById('esc-menu');
+    if (!menu) return;
+    if (forceClose || escMenuOpen) {
+        menu.style.display = 'none';
+        escMenuOpen = false;
+        document.getElementById('escQuitConfirm').style.display = 'none';
+    } else {
+        menu.style.display = 'flex';
+        escMenuOpen = true;
+        // Обновить текст кнопки fullscreen
+        const btn = document.getElementById('escBtnFullscreen');
+        if (btn) btn.textContent = document.fullscreenElement ? 'На весь экран: ВКЛ' : 'На весь экран: ВЫКЛ';
+    }
+}
+
+function updateFullscreenBtn() {
+    const isFs = window.innerHeight >= screen.height - 5 && window.innerWidth >= screen.width - 5;
+    const btn = document.getElementById('escBtnFullscreen');
+    if (btn) btn.textContent = isFs ? 'На весь экран: ВКЛ (F11)' : 'На весь экран: ВЫКЛ (F11)';
+}
+
+function setupEscMenu() {
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'Escape') {
+            e.preventDefault();
+            toggleEscMenu();
+        }
+    });
+    window.addEventListener('resize', updateFullscreenBtn);
+    document.getElementById('escBtnResume')?.addEventListener('click', () => toggleEscMenu(true));
+    // Кнопка fullscreen — подсказка что нужно F11
+    document.getElementById('escBtnFullscreen')?.addEventListener('click', () => {
+        const btn = document.getElementById('escBtnFullscreen');
+        if (btn) btn.textContent = 'Нажмите F11';
+        setTimeout(updateFullscreenBtn, 2000);
+    });
+    document.getElementById('escBtnQuit')?.addEventListener('click', () => {
+        document.getElementById('escQuitConfirm').style.display = 'block';
+    });
+    document.getElementById('escQuitYes')?.addEventListener('click', () => {
+        sessionStorage.removeItem('gameReconnect');
+        location.reload();
+    });
+    document.getElementById('escQuitNo')?.addEventListener('click', () => {
+        document.getElementById('escQuitConfirm').style.display = 'none';
+    });
+}
+
 window.addEventListener('load', () => {
     const nickInput = document.getElementById('nicknameInput');
     if (nickInput) nickInput.value = sessionStorage.getItem('tank_nickname_session') || '';
     initSkinSelector();
+    setupEscMenu();
     updateLobbyListUI([]);
     setupUISounds();
     connect();
@@ -432,7 +485,8 @@ function updateLobbyPlayers(players) {
         const div = document.createElement('div');
         div.className = 'player-slot team' + p.team;
         const readyIcon = p.isBot ? '' : `<span class="ready-icon">${p.ready ? '✅' : '❌'}</span>`;
-        div.innerHTML = `${readyIcon}<strong>${p.nick}</strong>${p.isHost ? ' 👑' : ''}${p.isBot ? ' 🤖' : ''}`;
+        const diffLabel = p.isBot ? ({ 1: '🟢', 2: '🟡', 3: '🔴' }[p.botDifficulty] || '🟡') : '';
+        div.innerHTML = `${readyIcon}<strong>${p.nick}</strong>${p.isHost ? ' 👑' : ''}${p.isBot ? ' 🤖' + diffLabel : ''}`;
         // Хост может перетаскивать любого игрока
         if (session.isHost) {
             div.draggable = true;
@@ -469,8 +523,8 @@ function sendChatMessage() {
     input.value = '';
 }
 
-function addBot() {
-    sendGameMessage({ type: ClientMsg.ADD_BOT });
+function addBot(difficulty = 2) {
+    sendGameMessage({ type: ClientMsg.ADD_BOT, difficulty });
 }
 
 function removeBot() {
@@ -485,7 +539,7 @@ function startGameClient() {
     if (chatLog) chatLog.innerHTML = '';
     document.getElementById('ui-game').style.display = 'block';
     document.getElementById('score-board').style.display = 'block';
-    document.getElementById('volume-control').style.display = 'block';
+    // volume-control убран — теперь в ESC меню
     document.getElementById('boost-panel').style.display = 'flex';
     document.getElementById('victory-screen').style.display = 'none';
     document.getElementById('death-screen').style.display = 'none';

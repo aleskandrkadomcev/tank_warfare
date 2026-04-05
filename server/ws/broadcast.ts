@@ -43,6 +43,7 @@ export function broadcastLobbyState(lobby: Lobby): void {
             camo: p.camo || '1',
             isHost: p.id === lobby.hostId,
             isBot: Boolean(p.isBot),
+            botDifficulty: p.isBot ? (p.botDifficulty ?? 2) : undefined,
         })),
         hostId: lobby.hostId,
         name: lobby.name,
