@@ -12,6 +12,10 @@
   <div id="fullscreen-hint">F11 — Развернуть на весь экран</div>
   <div id="menu">
     <h2>TANKS: WARFARE</h2>
+    <div id="version-line">
+      <span id="game-version">v0.5.0</span>
+      <button id="btnChangelog" type="button">Что нового?</button>
+    </div>
     <button id="btnRejoinGame" type="button" style="display:none; width:100%; padding:12px; margin-bottom:12px; background:#ff9800; color:#000; font-size:16px; font-weight:bold; border:none; border-radius:8px; cursor:pointer">Вернуться в игру</button>
     <input type="text" id="nicknameInput" placeholder="Твой никнейм" maxlength="24" />
     <br />
@@ -105,6 +109,19 @@
       <button id="lobby-chat-send" type="button">➤</button>
     </div>
   </div>
+  </div>
+  <!-- Ченжлог -->
+  <div id="changelog-overlay" style="display:none">
+    <div id="changelog-panel">
+      <div id="changelog-header">
+        <h2>Обновления</h2>
+        <button id="btnChangelogClose" type="button">✕</button>
+      </div>
+      <div id="changelog-body">
+        <div id="changelog-versions"></div>
+        <div id="changelog-content"></div>
+      </div>
+    </div>
   </div>
   <!-- ESC меню -->
   <div id="esc-menu" style="display:none">

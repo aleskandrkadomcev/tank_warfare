@@ -146,11 +146,112 @@ function setupEscMenu() {
     });
 }
 
+// ── Ченжлог ──
+const CHANGELOG = [
+    {
+        version: 'v0.5.0', date: '05.04.2026', title: 'Скины, боты, зум',
+        sections: [
+            { name: 'Новые танки и скины', items: [
+                'Т-62 (лёгкий) — 10 скинов',
+                'ИС-3 (тяжёлый) — 8 скинов',
+                'Т-34-85 (средний) — 10 скинов',
+                'Normal map освещение для всех танков (солнце + вспышка выстрела)',
+                'Тень башни для всех типов',
+                'Селектор скинов "Покраска" в лобби с превью',
+            ]},
+            { name: 'AI ботов', items: [
+                'Тактика по типу танка (ТТ: стоп-выстрел-отъезд, СТ: обход, ЛТ: зигзаг)',
+                'Все танки <50% HP меняют тактику, ЛТ ищет хилку',
+                'Боты ломают кирпичи на пути и стреляют по ним в поисках бонусов',
+                'Подбор бустов, использование абилок (хилка, ракета, мина, дым)',
+                'Память о последней позиции врага',
+                'Обнаружение из характеристик танка (ЛТ видит дальше)',
+                'Не видят через стены',
+                'Сложность: Новобранец / Боец / Ветеран (выбор в лобби)',
+                'Pathfinding A* с учётом габаритов танка',
+            ]},
+            { name: 'Геймплей', items: [
+                'Зум камеры (колёсико мыши, 70%-130%)',
+                'КД выстрела увеличен ×2 для всех танков',
+                'Скорость снаряда 1500 px/с',
+                'Разброс на ходу ±12°',
+                'Огромная карта (1.3× большой)',
+                'Raycast коллизии снарядов (без пролёта сквозь танк)',
+            ]},
+            { name: 'Звук', items: [
+                'Пул звуков (исправлено пропадание звуков)',
+                'Стерео звук двигателя с дистанцией',
+                'Все звуки от камеры, а не от танка',
+                'Звук подбора бонуса (pick_bonus1.mp3)',
+            ]},
+            { name: 'Интерфейс', items: [
+                'ESC меню (громкость, фуллскрин, выход)',
+                'Хост реконнект в лобби (10 сек)',
+                'Кнопка "Вернуться в игру"',
+                'Тип танка в таблице лидеров',
+                'Подсказка F11, никнейм до 24 символов',
+            ]},
+            { name: 'Баги', items: [
+                'TAB скорборд после рестарта',
+                'Камни не обновлялись после рестарта карты',
+                'Клавиши залипали при Alt+Tab',
+                'Двойной звук ракеты',
+                'Краш NaN в эффектах',
+            ]},
+        ],
+    },
+];
+
+function setupChangelog() {
+    const overlay = document.getElementById('changelog-overlay');
+    const verList = document.getElementById('changelog-versions');
+    const content = document.getElementById('changelog-content');
+    if (!overlay || !verList || !content) return;
+
+    function renderVersion(idx) {
+        const v = CHANGELOG[idx];
+        verList.querySelectorAll('.changelog-ver-btn').forEach((b, i) => {
+            b.classList.toggle('active', i === idx);
+        });
+        content.innerHTML = `<h3>${v.version} — ${v.title} <small style="color:#666">(${v.date})</small></h3>` +
+            v.sections.map((s) => `<h3>${s.name}</h3><ul>${s.items.map((i) => `<li>${i}</li>`).join('')}</ul>`).join('');
+    }
+
+    // Кнопки версий
+    CHANGELOG.forEach((v, i) => {
+        const btn = document.createElement('button');
+        btn.className = 'changelog-ver-btn';
+        btn.textContent = v.version;
+        btn.onclick = () => renderVersion(i);
+        verList.appendChild(btn);
+    });
+
+    // Открытие
+    document.getElementById('btnChangelog')?.addEventListener('click', () => {
+        overlay.style.display = 'flex';
+        renderVersion(0);
+    });
+    // Закрытие
+    document.getElementById('btnChangelogClose')?.addEventListener('click', () => {
+        overlay.style.display = 'none';
+    });
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) overlay.style.display = 'none';
+    });
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'Escape' && overlay.style.display === 'flex') {
+            overlay.style.display = 'none';
+            e.stopPropagation();
+        }
+    }, true); // capture чтобы перехватить до ESC меню
+}
+
 window.addEventListener('load', () => {
     const nickInput = document.getElementById('nicknameInput');
     if (nickInput) nickInput.value = sessionStorage.getItem('tank_nickname_session') || '';
     initSkinSelector();
     setupEscMenu();
+    setupChangelog();
     updateLobbyListUI([]);
     setupUISounds();
     connect();
